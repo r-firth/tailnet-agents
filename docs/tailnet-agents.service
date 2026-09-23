@@ -1,0 +1,18 @@
+# Install as ~/.config/systemd/user/tailnet-agents.service. Replace every /path/to/tailnet-agents.
+[Unit]
+Description=Tailnet Agents
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/tailnet-agents
+ExecStart=/path/to/tailnet-agents/scripts/start.sh
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:%h/.local/bin:%h/.npm-global/bin
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

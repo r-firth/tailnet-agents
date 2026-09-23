@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Tailnet Agents / SurroundFold walkthrough</title>
+  <style>
+    @font-face{font-family:Chakra;src:url('/demo-font.woff2') format('woff2');font-display:swap}
+    *{box-sizing:border-box}body{margin:0;background:#101011;color:#f1efeb;font:14px Chakra,system-ui,sans-serif;height:100dvh;display:grid;grid-template-rows:58px minmax(0,1fr) 45px}
+    header,footer{display:flex;align-items:center;gap:22px;padding:0 26px}header{border-bottom:1px solid #353230}header img{width:35px;height:35px;image-rendering:pixelated}h1{margin:0;font-size:17px;font-weight:500;letter-spacing:-.03em}header p{margin:4px 0 0;color:#aaa6a2;font-size:12px}.label{margin-left:auto;font:10px monospace;letter-spacing:.12em;color:#c8b296}.label i{display:inline-block;width:5px;height:5px;background:#ff995f;margin-right:8px}iframe{width:100%;height:100%;border:0;display:block}footer{border-top:1px solid #353230;background:#181818;gap:8px}button{color:#aaa6a2;background:none;border:1px solid transparent;font:12px system-ui;cursor:pointer;padding:9px 14px}button:hover,button:focus-visible{color:#f1efeb;border-color:#6f513b;outline:none}button[aria-pressed=true]{color:#ffc08e;border-color:#6f513b;background:#28211b}button span{color:#817c77;margin-right:8px;font:10px monospace}#replay{margin-left:auto;color:#ff995f}.note{color:#817c77;font-size:11px;margin-left:6px}@media(max-width:700px){header,footer{padding:0 12px;gap:8px}header img,.label,.note{display:none}h1{font-size:14px}button{padding:9px 7px;font-size:11px}button span{display:none}}
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/icons/hub-192.png" alt="Tailnet Agents">
+    <div><h1 id="headline">Start a render. Watch it happen.</h1><p id="caption">Tailnet Agents starts SurroundFold on your media server and keeps the terminal in view.</p></div>
+    <div class="label"><i></i>ILLUSTRATIVE DEMO / SYNTHETIC DATA</div>
+  </header>
+  <iframe title="Tailnet Agents demo workspace" id="workspace" src="about:blank"></iframe>
+  <footer aria-label="Demo chapters">
+    <button id="work" aria-pressed="true"><span>01</span>Start processing</button>
+    <button id="memory" aria-pressed="false"><span>02</span>Explore memory</button>
+    <button id="evidence" aria-pressed="false"><span>03</span>Follow the evidence</button>
+    <span class="note">Actual Tailnet Agents UI · scripted workflow</span>
+    <button id="replay">↻ Replay</button>
+  </footer>
+  <script>
+    const frame=document.getElementById('workspace');
+    const scenes={
+      work:['Start a render. Watch it happen.','Tailnet Agents starts SurroundFold on your media server and keeps the terminal in view.','/'],
+      memory:['The work becomes memory.','Explore the connections between conversations, tools, and terminal output.','/memory?q=SurroundFold'],
+      evidence:['Every answer has a trail.','Open the source run to see what the coordinator actually did.','/memory?q=SurroundFold&run=1001&anchor=1100']
+    };
+    function show(name){
+      document.getElementById('headline').textContent=scenes[name][0];
+      document.getElementById('caption').textContent=scenes[name][1];
+      for(const key in scenes)document.getElementById(key).setAttribute('aria-pressed',String(key===name));
+      frame.src=scenes[name][2];
+    }
+    async function replay(){await fetch('/_demo/replay');show('work')}
+    for(const key in scenes)document.getElementById(key).onclick=()=>show(key);
+    document.getElementById('replay').onclick=replay;
+    replay();
+  </script>
+</body>
+</html>

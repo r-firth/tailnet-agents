@@ -1,0 +1,17 @@
+Use case: stylized-concept. Asset type: a single transparent PNG sprite atlas for a personal agent workstation UI.
+Use the attached image ONLY as a style reference for the finely detailed little pixel-art hardware objects, not as layout to reproduce. Make an atlas, NOT a screenshot or UI mockup.
+Composition: exactly 3 equal columns by 2 equal rows, 6 evenly spaced square cells, overall 1536x1024 landscape image. One isolated sprite centered in each cell. Every sprite fits fully inside its own cell with 15% clear margins; no cross-cell overlaps. No labels, no grid lines, no backgrounds.
+Top row left: open vintage beige laptop at a three-quarter isometric angle, black screen with a few tiny ivory terminal marks, tactile keyboard.
+Top row middle: tall beige 1990s desktop tower with floppy drives, ventilation slots, tiny amber power LED.
+Top row right: low compact beige server enclosure with two dark drive bays, fine ventilation grille and tiny status LED.
+Bottom row left: small single-board computer in a beige open enclosure, ports, circuit traces and tiny green board.
+Bottom row middle: coordinator represented by a compact branching cluster of 5 small isometric ivory computer cubes linked by thin warm copper traces, clustered in a balanced tree silhouette. No letters.
+Bottom row right: a standalone floating retro terminal software window, rectangular ivory bevel, dark charcoal interior, one prominent orange > prompt and a short ivory underscore. Clearly a software window, not a computer or monitor. Three tiny window controls.
+Style: exceptionally crafted isometric pixel art, like exquisite 1990s strategy-game inventory sprites; crisp discrete square pixels, intricate ivory/ochre/copper dithering, warm top-left highlights, dark brown side shadows. Match the reference's miniature beige equipment. Rich readable silhouettes even at 40-56 CSS pixels. Restrained palette: ivory #e1ccb0, pale sand #c2a381, dark bronze #68503c, near-black #151313, copper-orange #ff985a. No photorealism, no glossy 3D, no blur, no bloom, no drop shadow outside silhouettes.
+Background MUST be actual alpha transparency, no checkerboard drawn into image. Save the output in the generated images directory for use as a project asset.
+
+Generated with the built-in image_gen tool.
+Project asset: web/public/art/hardware-atlas.png
+
+Follow-up edit prompt (built-in image_gen):
+Edit this sprite atlas. Remove the entire black/brown backdrop AND all tan glow/halos around the six sprites. Replace all background areas with actual alpha transparency. Preserve the six hardware sprites themselves, their sharp pixel silhouettes, colors, positions, sizes, the exact 3-column 2-row grid and 1536x1024 dimensions. Preserve the dark screen interiors as opaque. Do not redraw or rearrange the objects. No shadow or glow outside the objects. The output is a production transparent sprite sheet for CSS. No visible checkerboard or solid background pixels.
