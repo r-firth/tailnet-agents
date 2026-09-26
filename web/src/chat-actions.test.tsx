@@ -475,3 +475,107 @@ it("restores an interrupted streamed reply from durable events without a running
   expect(chat.textContent).toContain("Here is the partial reply");
   expect(chat.querySelector(".is-streaming")).toBeNull();
 });
+
+it("renders Claude web, shell and file receipts with native instruments", async () => {
+  const receipts = [
+    {
+      name: "WebSearch",
+      arguments: { query: "Claude SDK docs" },
+      output: [
+        {
+          type: "text",
+          text: 'Search evidence\nLinks: [{"title":"Official docs","url":"https://example.com/docs"},{"title":"Unsafe","url":"javascript:alert(1)"}]',
+        },
+      ],
+      label: "Web search",
+      kind: "web",
+    },
+    {
+      name: "Bash",
+      arguments: { command: "printf hello" },
+      output: "hello",
+      label: "Command",
+      kind: "command",
+    },
+    {
+      name: "Read",
+      arguments: { file_path: "/project/README.md" },
+      output: "File contents",
+      label: "Read file",
+      kind: "files",
+    },
+    {
+      name: "Edit",
+      arguments: {
+        file_path: "/project/a.py",
+        old_string: "old",
+        new_string: "new",
+      },
+      output: "Updated",
+      label: "File changes",
+      kind: "files",
+    },
+    {
+      name: "WebFetch",
+      arguments: { url: "https://example.com" },
+      output: "Fetched page",
+      label: "Web search",
+      kind: "web",
+    },
+  ];
+  await mount([
+    event(0, "message.user", { text: "Check the game" }),
+    ...receipts.flatMap((r, i) => {
+      const payload = {
+        source: "claude",
+        item_id: `claude-${i}`,
+        name: r.name,
+        arguments: r.arguments,
+      };
+      return [
+        event(i * 2 + 1, "tool.started", payload),
+        event(i * 2 + 2, "tool.result", {
+          ...payload,
+          result: { ok: true, result: { output: r.output } },
+        }),
+      ];
+    }),
+  ]);
+  expect(
+    document.querySelector(".chat-action-sources a")?.getAttribute("href"),
+  ).toBe("https://example.com/docs");
+  expect(document.querySelectorAll(".chat-action-sources a")).toHaveLength(1);
+  const cards = document.querySelectorAll(".chat-action");
+  expect(cards).toHaveLength(receipts.length);
+  receipts.forEach((receipt, i) => {
+    expect(cards[i].getAttribute("data-tool-kind")).toBe(receipt.kind);
+    expect(cards[i].querySelector(".chat-action-label")?.textContent).toContain(
+      receipt.label,
+    );
+    expect(cards[i].textContent).toContain(
+      typeof receipt.output === "string" ? receipt.output : "Search evidence",
+    );
+    expect(
+      cards[i].querySelector(".chat-action-record")?.textContent,
+    ).toContain(receipt.name);
+  });
+});
+
+it("shows a declined Claude tool as failed rather than a successful action", async () => {
+  await mount([
+    event(0, "message.user", { text: "Check the game" }),
+    event(1, "tool.result", {
+      source: "claude",
+      item_id: "denied",
+      name: "WebSearch",
+      arguments: { query: "test" },
+      result: { ok: false, result: { output: "Permission declined" } },
+    }),
+  ]);
+  expect(
+    document.querySelector(".chat-action.is-failed")?.textContent,
+  ).toContain("Permission declined");
+  expect(document.querySelector(".chat-action-status")?.textContent).toContain(
+    "Failed",
+  );
+});

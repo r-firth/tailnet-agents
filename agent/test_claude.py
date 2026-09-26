@@ -29,6 +29,8 @@ from worker import SCHEMA
 FIXTURE = """#!/usr/bin/env python3
 import json,sys,os
 from pathlib import Path
+assert sys.argv[sys.argv.index('--permission-prompt-tool')+1]=='stdio'
+assert sys.argv[sys.argv.index('--allowedTools')+1]=='WebSearch,WebFetch'
 assert '--bare' not in sys.argv
 assert '--dangerously-skip-permissions' not in sys.argv
 assert sys.argv[sys.argv.index('--model')+1]=='claude-opus-5-5'

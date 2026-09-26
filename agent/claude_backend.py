@@ -11,6 +11,7 @@ import shutil
 import signal
 import subprocess
 import uuid
+from dataclasses import replace
 
 import native
 from claude_agent_sdk import (
@@ -122,7 +123,15 @@ def check_subscription(target, cwd):
 
 class DeviceTransport(SubprocessCLITransport):
     def __init__(self, options, target=None, reverse=None):
-        super().__init__(prompt=self.empty_prompt(), options=options)
+        # ClaudeSDKClient configures this on a copy, but does not pass that copy
+        # to custom transports. Mirror its stdio routing without modifying the
+        # client options (which reject callback + permission_prompt_tool_name).
+        transport_options = (
+            replace(options, permission_prompt_tool_name="stdio")
+            if options.can_use_tool
+            else options
+        )
+        super().__init__(prompt=self.empty_prompt(), options=transport_options)
         self.target = target
         self.reverse = reverse
         self.device_cwd = str(options.cwd)
@@ -369,6 +378,7 @@ async def _run(
         model=os.environ.get("HUB_CLAUDE_MODEL") or "claude-opus-5-5",
         effort="medium",
         permission_mode="default",
+        allowed_tools=["WebSearch", "WebFetch"],
         include_partial_messages=True,
         settings=json.dumps({"forceLoginMethod": "claudeai", "apiKeyHelper": ""}),
         setting_sources=["user", "project", "local"],

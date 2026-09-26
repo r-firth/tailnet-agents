@@ -58,7 +58,7 @@ No production release binary was built, and no running service was restarted.
 
 - Rust formatting and Clippy (`--workspace --all-targets --locked -D warnings`).
 - Ruff lint/format, Prettier, Python compilation.
-- Python: 30 tests; frontend: 67 tests across 12 files; PWA: 5 tests.
+- Python: 30 tests; frontend: 69 tests across 12 files; PWA: 5 tests.
 - Rust: 64 tests, including the terminal-close regression.
 - Debug hub build, WASM release build, and production frontend build/typecheck.
 - Isolated agent-features smoke, including Claude coordinator delegation, remote
@@ -138,3 +138,22 @@ the original workspace and running service are preserved.
 The release validation fixes recognize tmux's `no current target` response as an
 already-absent terminal, and make the lifecycle smoke test wait for persisted
 background cleanup to finish before asserting that tmux shells have exited.
+
+## Permissions and tool UI follow-up
+
+A deployed Claude coordinator confirmed `claude-opus-5-5`, but WebSearch was
+rejected before an inline approval appeared. The pinned SDK sets
+`permission_prompt_tool_name="stdio"` on an options copy that custom transports
+never receive. The device transport now mirrors that setting on its own copy;
+the client keeps the original callback options. The local/SSH protocol fixtures
+assert the actual permission-routing CLI argument and exercise permission denial.
+WebSearch and WebFetch are explicitly allowed for ordinary web access; user and
+project deny/ask rules still apply, and other requests retain inline approval.
+No user or machine-wide Claude settings are changed.
+
+Claude WebSearch/WebFetch, Bash, Read/Grep/Glob, and Edit/Write/NotebookEdit receipts
+now use the shared web, command, and file instruments. Text-block results and
+explicit WebSearch source lists render as evidence, unsafe source URLs remain
+plain text, and the complete original tool record is retained. Two frontend
+regressions cover the provider mappings, evidence, safe links, and declined tools.
+An authenticated live coordinator check passed both WebSearch and WebFetch.

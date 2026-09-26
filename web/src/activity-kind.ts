@@ -1,9 +1,24 @@
 export type ActivityKind =
   "thinking" | "web" | "command" | "files" | "connection" | "memory" | "flow";
 
+export function activityName(name: string): string {
+  const aliases: Record<string, string> = {
+    WebSearch: "web_search",
+    WebFetch: "web_search",
+    Bash: "command_execution",
+    Read: "file_read",
+    Grep: "file_search",
+    Glob: "file_search",
+    Edit: "file_change",
+    Write: "file_change",
+    NotebookEdit: "file_change",
+  };
+  return aliases[name] || name;
+}
+
 /** Classify declared tools, never infer activity from generated prose. */
 export function activityKind(name: string): ActivityKind {
-  switch (name) {
+  switch (activityName(name)) {
     case "web_search":
       return "web";
     case "command_execution":
@@ -11,6 +26,8 @@ export function activityKind(name: string): ActivityKind {
     case "terminal_read":
     case "terminal_interrupt":
       return "command";
+    case "file_read":
+    case "file_search":
     case "file_change":
       return "files";
     case "open_terminal":

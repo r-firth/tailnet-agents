@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { ChatImages } from "./ChatImages";
 import { ActivitySignal } from "./ActivitySignal";
-import { activityKind } from "./activity-kind";
+import { activityKind, activityName } from "./activity-kind";
 import type { Device, Event, Session } from "./api";
 
 export type ToolAction = {
@@ -218,7 +218,8 @@ export function ToolActivity({
   const args = p.arguments || {};
   const receipt = p.result;
   const result = receipt?.result;
-  const name = String(p.name || "Action");
+  const rawName = String(p.name || "Action");
+  const name = p.source === "claude" ? activityName(rawName) : rawName;
   const kind = activityKind(name);
   const active = !action.end && !action.interrupted && running;
   const failed = action.end && receipt?.ok === false;
@@ -235,14 +236,27 @@ export function ToolActivity({
     result?.command ||
     (name === "terminal_send" ? args.text : undefined);
   const query =
-    args.query || result?.query || args.action?.url || result?.action?.url;
+    args.query ||
+    args.url ||
+    args.pattern ||
+    result?.query ||
+    args.action?.url ||
+    result?.action?.url;
   const changes = Array.isArray(result?.changes)
     ? result.changes
     : Array.isArray(args.changes)
       ? args.changes
-      : [];
+      : p.source === "claude" && name === "file_change"
+        ? [
+            {
+              path: args.file_path || args.notebook_path,
+              diff: args.new_string ?? args.content ?? args.new_source,
+              kind: rawName,
+            },
+          ]
+        : [];
   const search = name === "web_search";
-  const files = name === "file_change";
+  const files = ["file_change", "file_read", "file_search"].includes(name);
   const labels: Record<string, string> = {
     command_execution: active ? "Running command" : "Command",
     terminal_send: active ? "Sending to terminal" : "Terminal input",
@@ -254,6 +268,8 @@ export function ToolActivity({
     search_memory: active ? "Searching memory" : "Memory search",
     wait: "Wait",
     web_search: active ? "Searching web" : "Web search",
+    file_read: active ? "Reading file" : "Read file",
+    file_search: active ? "Searching files" : "File search",
     file_change: active ? "Editing files" : "File changes",
     show_image: active ? "Loading image" : "Image",
     image_generation: active ? "Generating image" : "Image generated",
@@ -269,6 +285,7 @@ export function ToolActivity({
     terminal?.name ||
     args.name ||
     args.path ||
+    args.file_path ||
     (p.native_receipt ? name : undefined);
   const target = search
     ? "Web"
@@ -277,9 +294,11 @@ export function ToolActivity({
       : device?.name ||
         (p.native_receipt
           ? "Response received by the agent"
-          : p.source === "codex"
-            ? "Tailnet Agents host"
-            : "Tailnet Agents");
+          : p.source === "claude"
+            ? "Claude execution device"
+            : p.source === "codex"
+              ? "Tailnet Agents host"
+              : "Tailnet Agents");
   const cwd = args.cwd || result?.cwd;
   const exit = result?.exitCode;
   const status = active
@@ -298,12 +317,37 @@ export function ToolActivity({
       ? result.aggregatedOutput
       : typeof result?.output === "string"
         ? result.output
-        : action.output;
-  const results = Array.isArray(result?.results) ? result.results : [];
+        : p.source === "claude" && Array.isArray(result?.output)
+          ? result.output
+              .map((block: any) =>
+                block?.type === "text" ? block.text : json(block),
+              )
+              .join("\n")
+          : action.output;
+  let results = Array.isArray(result?.results) ? result.results : [];
+  if (p.source === "claude" && rawName === "WebSearch" && !results.length) {
+    // Claude returns its source list as a JSON line within the tool's text.
+    // Parse only that explicit list; retain unrecognized output verbatim.
+    const links = output
+      .split("\n")
+      .find((line: string) => line.startsWith("Links: "));
+    if (links) {
+      try {
+        const parsed = JSON.parse(links.slice(7));
+        if (Array.isArray(parsed))
+          results = parsed.filter(
+            (item: any) => item && typeof item.url === "string",
+          );
+      } catch {
+        /* The raw receipt remains available. */
+      }
+    }
+  }
   const hasOutput =
     Boolean(output) ||
     typeof result?.aggregatedOutput === "string" ||
-    typeof result?.output === "string";
+    typeof result?.output === "string" ||
+    (p.source === "claude" && Array.isArray(result?.output));
   const knownResult =
     hasOutput ||
     search ||
