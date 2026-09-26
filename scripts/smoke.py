@@ -209,6 +209,15 @@ with (
             next(t for t in api("/state")["sessions"] if t["id"] == closed_id)["closed"]
             for closed_id in closing_ids
         ), "Closing a conversation left linked terminals open"
+        # Conversation close persists cleanup intent immediately; remote/slow
+        # terminal shutdown is completed by the background cleanup worker.
+        wait_for(
+            lambda: all(
+                not session.get("cleanup_pending", False)
+                for session in api("/state")["sessions"]
+                if session["id"] in closing_ids
+            )
+        )
         for closed_id in closing_ids:
             assert (
                 subprocess.run(
@@ -413,7 +422,7 @@ with (
             "PASS: missing OpenRouter key preserves graph/text search and reports semantic fallback",
             flush=True,
         )
-        failed_chat = api("/chats", {"name": "Unreachable device close check"})
+        failed_chat = api("/chats", {"name": "Never-connected terminal close check"})
         unreachable = api(
             "/devices",
             {"name": "Unavailable test host", "target": "hub-close-test.invalid"},
@@ -423,20 +432,24 @@ with (
             400,
             payload={"chat_id": failed_chat["id"], "device_id": unreachable["id"]},
         )
-        status(f"/api/chats/{failed_chat['id']}/close", 400, payload={})
+        # The connection failed before any remote command ran. Restoring the
+        # server must preserve that fact so closing doesn't require SSH access.
+        stop(child)
+        child = start(data, embedding_key="")
+        api(f"/chats/{failed_chat['id']}/close", {})
         failed_state = next(
             c for c in api("/state")["chats"] if c["id"] == failed_chat["id"]
         )
-        assert not failed_state["closed"] and not failed_state["closing"]
-        assert failed_state["close_error"] and "retry" in failed_state["close_error"]
+        assert failed_state["closed"] and not failed_state["closing"]
+        assert not failed_state["close_error"]
         assert failed_state["session_ids"]
-        assert not next(
+        assert next(
             t
             for t in api("/state")["sessions"]
             if t["id"] == failed_state["session_ids"][0]
         )["closed"]
         print(
-            "PASS: unreachable remote shutdown stays open with a durable, retryable error",
+            "PASS: a terminal that never connected can close after restart without SSH access",
             flush=True,
         )
     finally:

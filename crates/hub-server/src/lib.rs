@@ -3,7 +3,11 @@ pub mod conversations;
 pub mod discovery;
 pub mod embeddings;
 pub mod memory;
+pub mod push;
+pub mod requests;
+pub mod ssh;
 pub mod store;
+pub mod views;
 pub fn validate_target(value: &str) -> bool {
     !value.is_empty()
         && !value.starts_with('-')

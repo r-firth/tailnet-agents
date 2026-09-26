@@ -71,6 +71,14 @@ import { trackViewport } from "./mobile-viewport";
 import { chatEntries, ToolActivity, type ChatEntry } from "./ToolActivity";
 import { appendHubEvents, mergeHubSnapshot } from "./live-events";
 import { UpdateNotice } from "./UpdateNotice";
+import { Notifications } from "./Notifications";
+import {
+  AgentView,
+  InputRequest,
+  NewSession,
+  agentLabel,
+  type ViewSpec,
+} from "./AgentFeatures";
 import { InstallApp, registerServiceWorker } from "./InstallApp";
 import hubMark from "./assets/mark.svg";
 
@@ -131,12 +139,15 @@ function App() {
     refetchInterval: 10000,
     retry: 1,
   });
-  const [chatId, setChatId] = useState("");
+  const [chatId, setChatId] = useState(
+    () => new URL(location.href).searchParams.get("chat") || "",
+  );
+  const initialChat = useRef(new URL(location.href).searchParams.get("chat"));
   const [terminalChatId, setTerminalChatId] = useState("");
   const [message, setMessage] = useState("");
-  const [dialog, setDialog] = useState<"terminal" | "device" | "search" | null>(
-    null,
-  );
+  const [dialog, setDialog] = useState<
+    "terminal" | "device" | "search" | "agent" | null
+  >(null);
   const [deviceId, setDeviceId] = useState("local");
   const [editingDevice, setEditingDevice] = useState<Device>();
   const editDevice = (device?: Device) => {
@@ -203,6 +214,20 @@ function App() {
     async () => {},
   );
   webTerminalHandler.current = (session) => selectTerminal(session.id);
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (
+        event.data?.type === "tailnet.open-session" &&
+        typeof event.data.chat_id === "string"
+      ) {
+        setChatId(event.data.chat_id);
+        navigate({ to: "/" });
+      }
+    };
+    navigator.serviceWorker?.addEventListener("message", receive);
+    return () =>
+      navigator.serviceWorker?.removeEventListener("message", receive);
+  }, [navigate]);
   const chat = data?.chats.find((c) => c.id === chatId && !c.closed);
   const openChats = data?.chats.filter((c) => !c.closed) || [];
   const refresh = () => {
@@ -224,6 +249,14 @@ function App() {
   }, [page]);
   useEffect(() => {
     if (!data) return;
+    if (initialChat.current) {
+      const requested = initialChat.current;
+      initialChat.current = null;
+      if (data.chats.some((c) => c.id === requested)) {
+        void selectChat(requested);
+        return;
+      }
+    }
     if (!chatId || data.chats.some((c) => c.id === chatId && c.closed)) {
       const next = data.chats.find((c) => !c.closed);
       if (next) setChatId(next.id);
@@ -412,20 +445,27 @@ function App() {
     if (closingChats.includes(id)) return;
     setClosingChats((ids) => [...ids, id]);
     try {
-      const result = await api<{ closed_terminals: string[] }>(
-        `/chats/${id}/close`,
-        {},
-      );
+      const result = await api<{
+        closed_terminals: string[];
+        pending_terminals?: string[];
+      }>(`/chats/${id}/close`, {});
       cache.setQueryData<HubState>(["hub"], (old) =>
         old
           ? {
               ...old,
               chats: old.chats.map((c) =>
-                c.id === id ? { ...c, closed: true, closing: false } : c,
+                c.id === id
+                  ? { ...c, closed: true, closing: false, close_error: null }
+                  : c,
               ),
               sessions: old.sessions.map((s) =>
                 result.closed_terminals.includes(s.id)
-                  ? { ...s, closed: true }
+                  ? {
+                      ...s,
+                      closed: true,
+                      cleanup_pending:
+                        result.pending_terminals?.includes(s.id) ?? false,
+                    }
                   : s,
               ),
             }
@@ -437,7 +477,11 @@ function App() {
         setExpanded(false);
       }
       refresh();
-      setToast("Session closed; terminals stopped. History is in Sessions.");
+      setToast(
+        result.pending_terminals?.length
+          ? "Session closed. Terminal shutdown continues in the background."
+          : "Session closed; terminals stopped. History is in Sessions.",
+      );
     } catch (e) {
       notify(e);
       refresh();
@@ -474,17 +518,9 @@ function App() {
       notify(e);
     }
   }
-  async function newChat() {
-    try {
-      await createChat();
-      setMessage("");
-      navigate({ to: "/" });
-      setExpanded(false);
-      setSidebar(false);
-      refresh();
-    } catch (e) {
-      notify(e);
-    }
+  function newChat() {
+    setSidebar(false);
+    setDialog("agent");
   }
   async function send(e?: FormEvent) {
     e?.preventDefault();
@@ -661,7 +697,9 @@ function App() {
                                   ? data?.devices.find(
                                       (d) => d.id === terminals[0].device_id,
                                     )?.name || "Terminal"
-                                  : "Conversation"}
+                                  : c.agent
+                                    ? `${agentLabel(c)} · ${data?.devices.find((d) => d.id === c.agent?.device_id)?.name || c.agent.device_id}`
+                                    : agentLabel(c)}
                           {working && terminals.length > 0
                             ? ` · ${data?.devices.find((d) => d.id === terminals[0].device_id)?.name || "Terminal"}`
                             : ""}
@@ -763,6 +801,7 @@ function App() {
                     : "Finding your devices…"}
             </span>
           </div>
+          <Notifications chatId={chatId} installUrl={data?.public_origin} />
           <InstallApp installUrl={data?.public_origin} />
           <div className="sidebar-foot">
             <span className="avatar">R</span>
@@ -829,13 +868,15 @@ function App() {
                       <i
                         className={`dot ${running ? "working-dot" : "online"}`}
                       />
-                      Coordinator <b>·</b>{" "}
+                      {agentLabel(chat)} <b>·</b>{" "}
                       {writing ? "Writing" : running ? "Working" : "Ready"}{" "}
                       <b className="coordinator-availability">·</b>{" "}
                       <span className="coordinator-availability">
-                        {data?.devices.filter((d) => d.status === "online")
-                          .length || 0}{" "}
-                        available
+                        {chat?.agent
+                          ? data?.devices.find(
+                              (d) => d.id === chat.agent?.device_id,
+                            )?.name || chat.agent.device_id
+                          : `${data?.devices.filter((d) => d.status === "online").length || 0} available`}
                       </span>
                     </span>
                   </div>
@@ -961,6 +1002,8 @@ function App() {
                         devices={data!.devices}
                         sessions={data!.sessions}
                         onTerminal={selectTerminal}
+                        onChat={selectChat}
+                        agentName={agentLabel(chat)}
                       />
                     </>
                   )}
@@ -979,8 +1022,8 @@ function App() {
                   >
                     <textarea
                       ref={composer}
-                      aria-label="Message Coordinator"
-                      placeholder="Message Coordinator…"
+                      aria-label={`Message ${agentLabel(chat)}`}
+                      placeholder={`Message ${agentLabel(chat)}…`}
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       onKeyDown={(e) => {
@@ -1133,7 +1176,22 @@ function App() {
       </footer>
       {dialog && (
         <Dialog onClose={() => setDialog(null)}>
-          {dialog === "search" ? (
+          {dialog === "agent" ? (
+            <NewSession
+              devices={visibleDevices}
+              close={() => setDialog(null)}
+              onCreated={(created) => {
+                cache.setQueryData<HubState>(["hub"], (old) =>
+                  old ? { ...old, chats: [created, ...old.chats] } : old,
+                );
+                setChatId(created.id);
+                setMessage("");
+                setExpanded(false);
+                navigate({ to: "/" });
+                refresh();
+              }}
+            />
+          ) : dialog === "search" ? (
             <SearchPanel
               data={data}
               devices={visibleDevices}
@@ -1181,15 +1239,28 @@ function MessageFeed({
   devices,
   running,
   onTerminal,
+  onChat,
+  agentName,
 }: {
   entries: ChatEntry[];
+  onChat: (id: string) => void;
+  agentName: string;
   sessions: Session[];
   devices: Device[];
   running: boolean;
   onTerminal: (id: string) => void;
 }) {
   return entries.map(({ event, action }) =>
-    action ? (
+    event.kind === "ui.updated" ? (
+      <AgentView
+        key={event.id}
+        chatId={event.scope}
+        view={event.payload as ViewSpec}
+        running={running}
+      />
+    ) : event.kind === "agent.requested" ? (
+      <InputRequest key={event.id} event={event} running={running} />
+    ) : action ? (
       <div className="action-run" key={event.id}>
         <ToolActivity
           action={action}
@@ -1198,18 +1269,41 @@ function MessageFeed({
           devices={devices}
           onTerminal={onTerminal}
         />
+        {action.end?.payload.result?.result?.chat?.agent && (
+          <button
+            className="delegated-session"
+            onClick={() => onChat(action.end!.payload.result.result.chat.id)}
+          >
+            <TerminalSquare size={20} />
+            <span>
+              {action.end.payload.result.result.chat.name}
+              <small>
+                {agentLabel(action.end.payload.result.result.chat)} · Open agent
+                session
+              </small>
+            </span>
+            <ArrowUpRight size={16} />
+          </button>
+        )}
       </div>
     ) : (
-      <MessageView key={event.id} event={event} running={running} />
+      <MessageView
+        key={event.id}
+        event={event}
+        running={running}
+        agentName={agentName}
+      />
     ),
   );
 }
 function MessageView({
   event: e,
   running,
+  agentName = "Coordinator",
 }: {
   event: Event;
   running: boolean;
+  agentName?: string;
 }) {
   const streaming = Boolean(e.payload.streaming && running);
   const user = e.kind === "message.user";
@@ -1231,7 +1325,7 @@ function MessageView({
       </div>
       <div className="message-content">
         <div className="message-meta">
-          <strong>{user ? "You" : "Coordinator"}</strong>
+          <strong>{user ? "You" : agentName}</strong>
           {streaming && (
             <span className="writing-indicator">
               <i aria-hidden="true" />
@@ -1709,6 +1803,14 @@ function Sessions({
                   {c.close_error}
                 </p>
               )}
+              {data.sessions.some(
+                (s) => c.session_ids?.includes(s.id) && s.cleanup_pending,
+              ) && (
+                <p className="session-close-error" role="status">
+                  Terminal shutdown pending · retrying automatically. An
+                  unreachable device may still be running its process.
+                </p>
+              )}
               {terminal && (
                 <div className="linked-terminal-list">
                   <span className="session-terminal-detail">
@@ -1720,9 +1822,11 @@ function Sessions({
                       }
                     </span>
                     <small>
-                      {terminal.closed
-                        ? "Terminal closed"
-                        : terminal.cwd || "~"}
+                      {terminal.cleanup_pending
+                        ? "Shutdown pending"
+                        : terminal.closed
+                          ? "Terminal stopped"
+                          : terminal.cwd || "~"}
                     </small>
                   </span>
                 </div>
@@ -1976,7 +2080,7 @@ const router = createRouter({
         getParentRoute: () => rootRoute,
         path,
         validateSearch:
-          path === "/memory"
+          path === "/memory" || path === "/"
             ? (search: Record<string, unknown>) => search
             : undefined,
         component: () => null,

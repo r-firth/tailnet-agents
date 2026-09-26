@@ -16,9 +16,20 @@ export type Session = {
   cwd: string;
   owner: "user" | "agent";
   closed: boolean;
+  cleanup_pending?: boolean;
+  cleanup_error?: string | null;
   created_at: string;
 };
+export type AgentSession = {
+  provider: "codex" | "copilot" | "claude";
+  device_id: string;
+  cwd: string;
+  native_id?: string | null;
+};
 export type Chat = {
+  coordinator_provider?: "codex" | "claude";
+  agent?: AgentSession | null;
+  parent_id?: string | null;
   id: string;
   name: string;
   created_at: string;
@@ -74,3 +85,12 @@ export async function api<T>(
 }
 export const wsUrl = (path: string) =>
   `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api${path}`;
+
+export function randomId(): string {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}

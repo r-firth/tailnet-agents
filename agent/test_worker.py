@@ -71,6 +71,100 @@ FINAL = {
 
 
 class WorkerTests(unittest.TestCase):
+    def test_native_codex_resumes_the_saved_thread_on_its_device(self):
+        output = io.StringIO()
+        calls = []
+
+        def request(client, method, params, **kwargs):
+            # Keep the SDK's thread_resume method real: its first argument is
+            # the ID string, unlike thread_start's options object.
+            self.assertEqual(method, "thread/resume")
+            self.assertEqual(params["threadId"], "saved-thread")
+            calls.append(("launch", client.config.launch_args_override))
+            calls.append(("resume", params))
+            return SimpleNamespace(thread=SimpleNamespace(id="saved-thread"))
+
+        plain = {**FINAL, "text": "Remembered the previous turn"}
+        thread = SimpleNamespace(
+            turn=lambda *a, **k: SimpleNamespace(
+                stream=lambda: iter([item_event("item/completed", plain), completed()])
+            )
+        )
+        task = {
+            "chat_id": "hub-chat",
+            "devices": [],
+            "sessions": [],
+            "history": [{"kind": "message.user", "payload": {"text": "Continue"}}],
+            "conversation": {
+                "agent": {
+                    "provider": "codex",
+                    "device_id": "desktop",
+                    "cwd": "/work/game",
+                    "native_id": "saved-thread",
+                }
+            },
+            "execution": {"target": "desktop"},
+        }
+        with (
+            tempfile.TemporaryDirectory() as data,
+            patch.dict(os.environ, {"HUB_DATA_DIR": data}),
+            patch.object(worker.CodexClient, "start"),
+            patch.object(worker.CodexClient, "initialize"),
+            patch.object(worker.CodexClient, "request", request),
+            patch.object(worker, "Thread", lambda *a: thread),
+            patch("sys.stdin", io.StringIO(json.dumps(task))),
+            contextlib.redirect_stdout(output),
+        ):
+            worker.main()
+        resume = next(value for kind, value in calls if kind == "resume")
+        self.assertEqual(resume["threadId"], "saved-thread")
+        self.assertEqual(resume["cwd"], "/work/game")
+        self.assertIn("desktop", calls[0][1])
+        frames = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual(
+            next(f["native_id"] for f in frames if f["type"] == "session"),
+            "saved-thread",
+        )
+        self.assertEqual(
+            next(f["text"] for f in frames if f["type"] == "message"),
+            "Remembered the previous turn",
+        )
+
+    def test_native_session_streams_plain_text_without_a_json_envelope(self):
+        output = io.StringIO()
+        plain = {**FINAL, "text": "Native answer"}
+
+        def events():
+            yield item_event("item/started", {**plain, "text": ""})
+            yield Notification(
+                "item/agentMessage/delta",
+                AgentMessageDeltaNotification(
+                    thread_id="codex-thread",
+                    turn_id="turn-1",
+                    item_id="answer",
+                    delta="Native answer",
+                ),
+            )
+            frames = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual(
+                "".join(f["delta"] for f in frames if f["type"] == "message.delta"),
+                "Native answer",
+            )
+            yield item_event("item/completed", plain)
+            yield completed()
+
+        thread = SimpleNamespace(turn=lambda *a, **k: SimpleNamespace(stream=events))
+        with contextlib.redirect_stdout(output):
+            worker.run_decision(thread, "test", "test", structured=False)
+        self.assertEqual(
+            [
+                json.loads(line)["text"]
+                for line in output.getvalue().splitlines()
+                if json.loads(line)["type"] == "message"
+            ],
+            ["Native answer"],
+        )
+
     def test_streams_only_user_facing_json_text_before_completion(self):
         text = 'First line\nA "quote", a slash \\ and a rocket 🚀.'
         decision = {"title": "hidden title", "tools": [], "text": text}
@@ -277,7 +371,7 @@ class WorkerTests(unittest.TestCase):
                 return SimpleNamespace(stream=lambda: iter(events))
 
         class FakeCodex:
-            def __init__(self, config):
+            def __init__(self, config, **kwargs):
                 pass
 
             def __enter__(self):

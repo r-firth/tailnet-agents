@@ -19,6 +19,7 @@ agent/.venv/bin/python -m py_compile agent/worker.py scripts/smoke.py
 agent/.venv/bin/python -m unittest discover -s agent -p 'test_*.py'
 agent/.venv/bin/python scripts/smoke.py
 agent/.venv/bin/python scripts/images-smoke.py
+agent/.venv/bin/python scripts/agent-features-smoke.py
 node scripts/ghostty-smoke.mjs
 node scripts/ghostty-history-smoke.mjs
 agent/.venv/bin/python scripts/discovery-smoke.py

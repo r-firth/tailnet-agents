@@ -170,6 +170,11 @@ impl Store {
             .and_then(|e| e.payload["end"].as_u64())
             .unwrap_or(0)
     }
+    pub fn has_terminal_output(&self, scope: &str) -> bool {
+        self.events
+            .iter()
+            .any(|e| e.scope == scope && e.kind == "terminal.output")
+    }
     pub fn pending_embeddings(&self, limit: usize) -> Vec<Event> {
         let read = self.db.read();
         self.events

@@ -1,4 +1,28 @@
 use hub_server::terminal::{Terminal, capture, close};
+
+#[test]
+fn only_definite_pre_command_rejections_prove_that_no_shell_was_created() {
+    use hub_server::terminal::rejected_before_command;
+    for error in [
+        "Host key verification failed.",
+        "ssh: Could not resolve hostname absent.invalid: nodename nor servname provided, or not known",
+        "user@host: Permission denied (publickey,password).",
+        "tailscale: tailnet policy does not permit you to SSH as user \"user\"\nConnection closed by 100.64.0.1 port 22",
+        "ssh: connect to host server port 22: Connection refused",
+    ] {
+        assert!(rejected_before_command(error), "{error}");
+    }
+    for error in [
+        "Connection timed out",
+        "Connection closed by 100.64.0.1 port 22",
+        "Connection reset by peer",
+        "mkdir: Permission denied",
+        "tmux: command not found",
+        "Terminal dimensions missing",
+    ] {
+        assert!(!rejected_before_command(error), "{error}");
+    }
+}
 #[tokio::test]
 async fn shell_state_survives_detaching_and_reattaching() {
     let id = uuid::Uuid::new_v4().simple().to_string();

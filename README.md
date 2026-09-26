@@ -13,6 +13,7 @@
   <a href="#install">Install</a> ·
   <a href="docs/self-hosting.md">Self-hosting</a> ·
   <a href="#mobile">Mobile</a> ·
+  <a href="docs/agents-and-views.md">Agents & views</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="CONTRIBUTING.md">Development</a>
 </p>
@@ -31,7 +32,7 @@
 
 ## What is Tailnet Agents?
 
-Tailnet Agents brings a built-in Codex agent, your SSH devices, and persistent terminals
+Tailnet Agents brings a built-in coordinator (Codex or Claude), your SSH devices, and persistent terminals
 into one browser workspace. Run it on a home server, open it from your laptop
 or phone, and ask it to work across your machines.
 
@@ -46,16 +47,17 @@ result back to the session that produced it.
 
 ## Highlights
 
-- A Codex SDK coordinator with streaming replies, native tools, and live web search
+- Per-conversation Codex or Claude coordinators with native tools and workspace delegation
 - Automatic discovery of Tailscale SSH devices using their short connection names
 - One persistent, Ghostty-powered terminal per session, with scrollback while watching
 - Commands, diffs, sources, screenshots, and generated images directly in the chat
 - Qwen semantic search and an interactive Vecgra graph of your work
-- A mobile interface that installs as a standalone PWA
+- Native Codex, Copilot and Claude sessions on your devices, with coordinator delegation
+- Persistent, interactive agent-created views embedded in chat
+- A mobile PWA with push notifications for finished work and requests for input
 - Copper accents, pixel hardware, and dithered animations tied to real agent activity
 
-Tailnet Agents is an early alpha. Agents installed on a device can run in its
-terminal today; native ACP sessions and agent installation are planned.
+Tailnet Agents is an early alpha. Native agents use their existing device installation and sign-in; automatic installation is deferred. See [agents, custom views and notifications](docs/agents-and-views.md) for protocol requirements and usage.
 
 ## Install
 
@@ -93,8 +95,7 @@ It covers private Tailscale HTTPS, authentication, SSH setup, and backups.
 
 Ask the coordinator to use a device, or open a terminal in the current session.
 Its actions appear inline, with expandable commands, output, exit status,
-file changes, and web sources. Native Codex tools run on the Tailnet Agents host; Tailnet Agents
-terminals provide visible, persistent work on local or remote machines.
+file changes, and web sources. The coordinator runs on the Tailnet Agents host. Native Codex, Copilot and Claude sessions run on the selected device; terminals provide visible, persistent shells there.
 
 Use **Take control** to type in the terminal. You can scroll back while the
 agent owns it, and the most recently focused viewer sets its dimensions.
@@ -128,7 +129,7 @@ npm run check     # Tests, builds, and isolated integration checks
 ```
 
 The frontend uses React, TypeScript, and Vite. Rust/Axum serves the API, streams
-events, and owns terminal connections; a Python worker hosts the Codex SDK.
+events, and owns terminal connections; a Python worker hosts the provider SDKs.
 Rust/wgpu supplies the WebGPU activity instruments, with matching Canvas 2D
 rendering when WebGPU is unavailable.
 
@@ -141,3 +142,64 @@ A project-wide license has not been selected yet. Vendored Vecgra retains its
 [Apache 2.0 license](vendor/vecgra/LICENSE), and bundled Nerd Fonts retain their
 [license](web/public/fonts/NERD-FONTS-LICENSE) and
 [attribution](web/public/fonts/NERD-FONTS-README.md).
+
+## Claude sessions
+
+Choose **Coordinator → Claude** for a host-side coordinator, or **Claude** for a
+native session bound to a registered device and absolute project directory.
+Existing conversations retain Codex as their coordinator backend. Role and provider
+are separate: a Claude coordinator can delegate to any supported provider; native
+sessions cannot delegate, regardless of provider. Follow-ups resume the saved
+Claude session ID on its original device and project.
+
+Install the official Claude Code CLI yourself on every execution machine and run
+`claude auth login` there using your Claude subscription. For manual code entry
+over SSH on CLI versions before 2.1.126, use `claude /login` and select the Claude
+subscription option. The hub service must run
+as that same OS user with `claude` on PATH. Discovery reports installation, not
+successful authentication. No credentials are copied from your workstation to a
+remote machine. The adapter checks the CLI's authentication status, requires
+`claude.ai`, clears API/alternate-provider authentication environment variables,
+and uses a per-process `forceLoginMethod: claudeai` setting. It never invokes
+`--bare`, bypasses permissions, chooses an API fallback, or uses the SDK-bundled CLI.
+Account-side limits and billing settings remain controlled by Anthropic.
+
+`HUB_MODEL` remains Codex-only. Claude defaults to `claude-opus-5-5` (Opus 5.5)
+with explicit `medium` effort for both coordinator and native sessions. Optional
+`HUB_CLAUDE_MODEL` overrides the model. Opus 5.5 requires Claude Code 2.1.280 or
+later on every execution device; the app does not upgrade installed CLIs. No machine-wide settings
+are written. User/project Claude settings, skills and tools are loaded normally.
+Native tool approvals and `AskUserQuestion` requests appear in the conversation;
+declined requests remain declined. The stop button interrupts Claude before the
+worker process group is terminated as a cleanup fallback.
+
+Remote execution uses the pinned official Python Agent SDK on the hub, with its
+stdio transport carried over SSH to the unmodified `claude` CLI on the selected
+machine. Remote Python/SDK installation is unnecessary. An SSH reverse forward
+provides the existing conversation-scoped workspace MCP endpoint, so the remote
+SSH server must permit loopback reverse forwarding. Tailscale reauthentication is
+shown in chat before launch. This uses registered-device SSH, not Anthropic's
+separate Remote Control or cloud session services. The SDK transport adapter uses
+a pinned internal command builder; upgrade it together with its protocol tests.
+
+After updating project dependencies (`uv sync --project agent --group dev`), run
+`npm run check`. An optional live check uses subscription capacity:
+
+```sh
+agent/.venv/bin/python scripts/claude-smoke.py
+```
+
+It checks structured coordinator output, native streaming and session resume in a
+temporary project without restarting the running service. Remote protocol tests
+use a simulated SSH executable; a real remote smoke check additionally requires a
+registered machine with a working subscription sign-in and SSH forwarding.
+
+Implementation references (verified September 26, 2026):
+[Agent SDK Python interface](https://code.claude.com/docs/en/agent-sdk/python),
+[CLI flags](https://code.claude.com/docs/en/cli-reference),
+[streaming](https://code.claude.com/docs/en/agent-sdk/streaming-output),
+[sessions and resume](https://code.claude.com/docs/en/agent-sdk/sessions),
+[permissions and user input](https://code.claude.com/docs/en/agent-sdk/user-input),
+and [subscription authentication and usage](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan).
+The subscription article's June 15 update pauses the proposed SDK billing changes;
+its older proposal remains below the update for reference.

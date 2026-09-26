@@ -25,7 +25,7 @@ class Socket {
   close() {}
 }
 const date = "2026-09-23T02:00:00Z";
-async function mount(failClose = false) {
+async function mount(failClose: boolean | "pending" = false) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("WebSocket", Socket);
   window.history.replaceState(null, "", "/");
@@ -69,7 +69,7 @@ async function mount(failClose = false) {
       requests.push(url);
       const [, id, action] = url.match(/\/chats\/([^/]+)\/(\w+)/) || [];
       if (action === "close") {
-        if (failClose)
+        if (failClose === true)
           return Response.json(
             {
               error:
@@ -80,9 +80,16 @@ async function mount(failClose = false) {
         const chat = state.chats.find((c) => c.id === id)!;
         chat.closed = true;
         state.sessions.forEach((s) => {
-          if (chat.session_ids?.includes(s.id)) s.closed = true;
+          if (chat.session_ids?.includes(s.id)) {
+            s.closed = true;
+            Object.assign(s, { cleanup_pending: failClose === "pending" });
+          }
         });
-        return Response.json({ ok: true, closed_terminals: chat.session_ids });
+        return Response.json({
+          ok: true,
+          closed_terminals: chat.session_ids,
+          pending_terminals: failClose === "pending" ? chat.session_ids : [],
+        });
       }
       if (action === "reopen")
         state.chats.find((c) => c.id === id)!.closed = false;
@@ -271,4 +278,31 @@ it("keeps a session visible and reports the error if a terminal cannot be stoppe
       ) as HTMLButtonElement
     ).disabled,
   ).toBe(false);
+});
+
+it("removes an unreachable session while showing pending shutdown honestly in its history", async () => {
+  await mount("pending");
+  await click(document.querySelector('button[aria-label="Close Game build"]'));
+  await settle(() =>
+    expect(document.querySelector(".chat-list")?.textContent).not.toContain(
+      "Game build",
+    ),
+  );
+  expect(document.querySelector(".toast")?.textContent).toContain("shutdown");
+  expect(document.querySelector(".toast")?.textContent).not.toContain(
+    "terminals stopped",
+  );
+  await click(document.querySelector('.topbar a[href="/sessions"]'));
+  await settle(() =>
+    expect(
+      document.querySelector(".conversation-record.is-closed")?.textContent,
+    ).toContain("shutdown pending"),
+  );
+  await click(document.querySelector('button[aria-label="Reopen Game build"]'));
+  await settle(() =>
+    expect(document.querySelector(".conversation-header h1")?.textContent).toBe(
+      "Game build",
+    ),
+  );
+  expect(document.querySelector(".terminal-header")).toBeNull();
 });

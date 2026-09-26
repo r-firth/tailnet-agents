@@ -30,6 +30,8 @@ export function chatEntries(events: Event[]): ChatEntry[] {
   const entries: ChatEntry[] = [];
   const pending = new Map<string, ToolAction[]>();
   const messages = new Map<string, ChatEntry>();
+  const views = new Map<string, ChatEntry>();
+  const requests = new Map<string, ChatEntry>();
   const keyFor = (e: Event) => {
     const p = e.payload;
     return p.item_id
@@ -45,6 +47,10 @@ export function chatEntries(events: Event[]): ChatEntry[] {
         "agent.error",
       ].includes(event.kind)
     ) {
+      for (const request of requests.values()) {
+        if (!request.event.payload.answer)
+          request.event.payload.cancelled = true;
+      }
       for (const calls of pending.values())
         for (const call of calls) call.interrupted = true;
       pending.clear();
@@ -54,6 +60,33 @@ export function chatEntries(events: Event[]): ChatEntry[] {
           entry.event.payload.interrupted = true;
         }
       }
+    }
+    if (event.kind === "ui.updated") {
+      const key = JSON.stringify([event.scope, event.payload.view_id]);
+      const previous = views.get(key);
+      if (previous) previous.event = { ...event, id: previous.event.id };
+      else {
+        const entry = { event };
+        views.set(key, entry);
+        entries.push(entry);
+      }
+      continue;
+    }
+    if (event.kind === "agent.requested") {
+      const entry = { event: { ...event, payload: { ...event.payload } } };
+      requests.set(
+        JSON.stringify([event.scope, event.payload.request_id]),
+        entry,
+      );
+      entries.push(entry);
+      continue;
+    }
+    if (event.kind === "agent.answered") {
+      const request = requests.get(
+        JSON.stringify([event.scope, event.payload.request_id]),
+      );
+      if (request) request.event.payload.answer = event.payload.answer;
+      continue;
     }
     if (
       ["message.started", "message.delta", "message.assistant"].includes(

@@ -65,16 +65,37 @@ fn remote_command(target: Option<&str>, command: &str) -> Result<Command> {
     Ok(cmd)
 }
 pub async fn run(target: Option<&str>, command: &str) -> Result<String> {
-    let result = tokio::time::timeout(
+    let result = crate::ssh::output(
+        remote_command(target, command)?,
+        target,
         std::time::Duration::from_secs(15),
-        remote_command(target, command)?.output(),
     )
-    .await
-    .context("Connection timed out")??;
+    .await?;
     if !result.status.success() {
         bail!("{}", String::from_utf8_lossy(&result.stderr).trim());
     }
     Ok(String::from_utf8_lossy(&result.stdout).into_owned())
+}
+
+/// These SSH failures happen before the remote command can run. A generic
+/// timeout or a lost connection is ambiguous: it may have created the shell.
+pub fn rejected_before_command(message: &str) -> bool {
+    message.lines().any(|line| {
+        line == "Host key verification failed."
+            || line.starts_with("ssh: Could not resolve hostname ")
+            || line.starts_with("tailscale: tailnet policy does not permit you to SSH as user ")
+            || line.contains(": Permission denied (publickey")
+            || (line.starts_with("ssh: connect to host ")
+                && [
+                    "Connection refused",
+                    "No route to host",
+                    "Network is unreachable",
+                    "Operation timed out",
+                    "Connection timed out",
+                ]
+                .iter()
+                .any(|reason| line.ends_with(reason)))
+    })
 }
 
 /// Copy an explicit image file over the device's configured short SSH target.
@@ -88,12 +109,12 @@ pub async fn read_image(target: &str, path: &str) -> Result<Vec<u8>> {
     let command = format!(
         "if test -f {quoted}; then head -c {limit} {quoted}; else printf 'Image file not found' >&2; exit 1; fi"
     );
-    let result = tokio::time::timeout(
+    let result = crate::ssh::output(
+        remote_command(Some(target), &command)?,
+        Some(target),
         std::time::Duration::from_secs(30),
-        remote_command(Some(target), &command)?.output(),
     )
-    .await
-    .context("Image transfer timed out")??;
+    .await?;
     if !result.status.success() {
         bail!(
             "Could not read image: {}",
@@ -106,6 +127,11 @@ pub async fn read_image(target: &str, path: &str) -> Result<Vec<u8>> {
     Ok(result.stdout)
 }
 impl Terminal {
+    /// Stop this host's attachment; the detached shell has its own lifecycle.
+    pub fn disconnect(&self) {
+        let _ = self.child.lock().unwrap().kill();
+    }
+
     pub async fn open(
         id: &str,
         target: Option<&str>,
@@ -303,7 +329,8 @@ pub async fn close(id: &str, target: Option<&str>) -> Result<()> {
             let message = error.to_string();
             // An exited shell is already stopped. Transport, authentication,
             // and permission failures must still reach the caller.
-            if message.starts_with("can't find session:")
+            if message == "no current target"
+                || message.starts_with("can't find session:")
                 || message.starts_with("no server running on ")
                 || (message.starts_with("error connecting to ")
                     && message.ends_with("(No such file or directory)"))

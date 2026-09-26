@@ -31,6 +31,7 @@ __pycache__/
 *.pfx
 id_rsa
 id_ed25519
+push.json
 credentials.json
 auth.json
 .npmrc

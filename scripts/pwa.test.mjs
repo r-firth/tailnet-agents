@@ -7,6 +7,8 @@ function worker() {
   const handlers = new Map();
   const cached = new Map();
   const removed = [];
+  const notifications = [];
+  const navigations = [];
   let network = async () => new Response("current app");
   runInNewContext(
     readFileSync(new URL("../web/public/sw.js", import.meta.url), "utf8"),
@@ -32,11 +34,14 @@ function worker() {
         location: { origin: "https://hub.test" },
         addEventListener: (name, handler) => handlers.set(name, handler),
         skipWaiting: async () => {},
-        clients: { claim: async () => {} },
+        registration: {showNotification: async (title, options) => notifications.push({title,options})},
+        clients: { claim: async () => {}, matchAll:async()=>[{url:"https://hub.test/",navigate:async url=>navigations.push(url),focus:async()=>{}}], openWindow:async url=>navigations.push(url) },
       },
     },
   );
   return {
+    notifications,navigations,
+    async event(name, payload) {let done;handlers.get(name)({...payload,waitUntil:promise=>{done=promise}});await done;},
     cached,
     removed,
     network: (fn) => {
@@ -105,4 +110,11 @@ test("upgrading removes only this app's obsolete offline cache", async () => {
   const sw = worker();
   await sw.lifecycle("activate");
   assert.deepEqual(sw.removed, ["hub-offline-old"]);
+});
+
+test("push notifications open the exact session and never trust a supplied destination URL", async()=>{
+ const sw=worker();await sw.event("push",{data:{json:()=>({title:"Done",body:"Ready",chat_id:"chat-123",url:"https://untrusted.test"})}});
+ assert.equal(sw.notifications[0].options.data.chat_id,"chat-123");
+ await sw.event("notificationclick",{notification:{data:sw.notifications[0].options.data,close(){}}});
+ assert.deepEqual(sw.navigations,["https://hub.test/?chat=chat-123"]);
 });

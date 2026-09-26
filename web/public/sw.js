@@ -55,3 +55,23 @@ self.addEventListener("fetch", (event) => {
       ),
   );
 });
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data?.json() || {}; } catch { /* Show a generic alert for malformed payloads. */ }
+  event.waitUntil(self.registration.showNotification(
+    typeof data.title === "string" ? data.title.slice(0, 160) : "Tailnet Agents",
+    { body: typeof data.body === "string" ? data.body.slice(0, 300) : "There’s an update in your workspace.", icon: "/icons/hub-192.png", badge: "/icons/hub-192.png", tag: typeof data.tag === "string" ? data.tag : "workspace", data: {chat_id: typeof data.chat_id === "string" ? data.chat_id : ""} }
+  ));
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const chat = event.notification.data?.chat_id || "";
+  const url = new URL("/", self.location.origin); if (chat) url.searchParams.set("chat", chat);
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({type: "window", includeUncontrolled: true});
+    const existing = windows.find(client => new URL(client.url).origin === self.location.origin);
+    if (existing) { await existing.navigate(url.href); await existing.focus(); }
+    else await self.clients.openWindow(url.href);
+  })());
+});

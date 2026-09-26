@@ -1,6 +1,15 @@
 use crate::store::Event;
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AgentSession {
+    pub provider: String,
+    pub device_id: String,
+    pub cwd: String,
+    #[serde(default)]
+    pub native_id: Option<String>,
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Chat {
     pub id: String,
@@ -18,6 +27,19 @@ pub struct Chat {
     pub session_ids: Vec<String>,
     #[serde(default)]
     pub updated_at: String,
+    #[serde(default)]
+    pub agent: Option<AgentSession>,
+    #[serde(
+        default = "default_coordinator_provider",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub coordinator_provider: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+}
+
+pub fn default_coordinator_provider() -> String {
+    "codex".into()
 }
 
 pub fn project(events: &[Event]) -> Vec<Chat> {
@@ -54,6 +76,11 @@ pub fn project(events: &[Event]) -> Vec<Chat> {
             continue;
         };
         match event.kind.as_str() {
+            "agent.session" => {
+                if let Some(agent) = &mut chat.agent {
+                    agent.native_id = event.payload["native_id"].as_str().map(str::to_owned);
+                }
+            }
             "chat.closing" => {
                 chat.closing = true;
                 chat.close_error = None;
