@@ -17,5 +17,21 @@
     <p>Connect to Tailscale and check that your home server is awake, then try again.</p>
     <button onclick="location.reload()">Reconnect</button>
   </main>
+  <script>
+    // Leave this screen on its own once the workspace answers again.
+    let checking = false;
+    const retry = async () => {
+      if (checking || document.hidden) return;
+      checking = true;
+      try {
+        const response = await fetch("/", { cache: "no-store", signal: AbortSignal.timeout(5000) });
+        if (response.ok) return location.reload();
+      } catch {}
+      checking = false;
+    };
+    setInterval(retry, 5000);
+    addEventListener("online", retry);
+    document.addEventListener("visibilitychange", retry);
+  </script>
 </body>
 </html>

@@ -18,7 +18,7 @@ vi.mock("react-dom/client", async (original) => {
 vi.mock("./gpu", () => ({ mountSignal: () => () => {} }));
 class WorkspaceSocket {
   static latest: WorkspaceSocket;
-  onmessage?: () => void;
+  onmessage?: (message: { data: unknown }) => void;
   constructor() {
     WorkspaceSocket.latest = this;
   }
@@ -224,7 +224,7 @@ it("updates one live action in place and retains an opened output on completion"
   expect(row!.textContent).toContain("evidence");
   state.events.push(finished, event(6, "agent.finished", {}));
   state.running = [];
-  await act(async () => WorkspaceSocket.latest.onmessage?.());
+  await act(async () => WorkspaceSocket.latest.onmessage?.({ data: "" }));
   await vi.waitFor(async () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 120));
@@ -321,7 +321,10 @@ it("refreshes live output during a continuous stream of workspace events", async
   state.events.push(
     event(3, "tool.output", { ...identity, delta: "stream is still running" }),
   );
-  const stream = setInterval(() => WorkspaceSocket.latest.onmessage?.(), 20);
+  const stream = setInterval(
+    () => WorkspaceSocket.latest.onmessage?.({ data: "" }),
+    20,
+  );
   try {
     await vi.waitFor(
       async () => {
@@ -405,7 +408,7 @@ it("animates a live tool, then settles the same inspectable row when it finishes
   expect(row.querySelector("canvas")).not.toBeNull();
   await act(async () => row.querySelector("summary")!.click());
   state.events.push(finished);
-  WorkspaceSocket.latest.onmessage?.();
+  WorkspaceSocket.latest.onmessage?.({ data: "" });
   await vi.waitFor(async () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -454,7 +457,7 @@ it("streams a single assistant message over the socket and reconciles its final 
     1,
   );
   // The socket-only text must survive a later stale HTTP snapshot.
-  WorkspaceSocket.latest.onmessage?.();
+  WorkspaceSocket.latest.onmessage?.({ data: "" });
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 160));
   });

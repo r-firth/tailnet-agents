@@ -760,6 +760,7 @@ async fn stream_terminal(
     mut socket: WebSocket,
 ) {
     let view = uuid::Uuid::new_v4().to_string();
+    let mut heartbeat = heartbeat();
     let mut geometry = t.geometry();
     let (cols, rows) = *geometry.borrow_and_update();
     let _ = socket
@@ -780,6 +781,9 @@ async fn stream_terminal(
     }
     loop {
         tokio::select! {
+            _ = heartbeat.tick() => {
+                if socket.send(Message::Binary(Default::default())).await.is_err() { break; }
+            },
             changed = geometry.changed() => {
                 if changed.is_err() { break; }
                 let (cols, rows) = *geometry.borrow_and_update();
@@ -818,11 +822,23 @@ async fn stream_terminal(
     }
     let _ = t.remove_view(&view);
 }
+/// Browsers cannot see WebSocket pings, so an empty binary frame proves the
+/// connection is alive. Clients reconnect after missing a few of these.
+fn heartbeat() -> tokio::time::Interval {
+    let period = std::time::Duration::from_secs(15);
+    let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    interval
+}
 async fn event_ws(State(h): State<Shared>, ws: WebSocketUpgrade) -> Response {
     let mut rx = h.events.subscribe();
     ws.on_upgrade(move |mut socket| async move {
+        let mut heartbeat = heartbeat();
         loop {
             tokio::select! {
+                _ = heartbeat.tick() => {
+                    if socket.send(Message::Binary(Default::default())).await.is_err() { break; }
+                },
                 event = rx.recv() => match event {
                     Ok(event) => {
                         if event.kind != "terminal.output" {

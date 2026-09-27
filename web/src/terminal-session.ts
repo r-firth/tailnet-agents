@@ -4,6 +4,7 @@ import {
   type TerminalHistory,
   type HistoryState,
 } from "./terminal-history";
+import { isHeartbeat, watchSocket } from "./socket-liveness";
 export type TerminalResources = {
   terminal: Pick<
     Terminal,
@@ -55,6 +56,7 @@ export function mountTerminal(options: TerminalMount): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   let attempt = 0;
+  let lastSeen = 0;
   let history: ReturnType<typeof mountTerminalHistory> | undefined;
   const subscriptions: { dispose(): void }[] = [];
   const dispose = () => {
@@ -176,12 +178,15 @@ export function mountTerminal(options: TerminalMount): () => void {
       });
       const connect = () => {
         if (disposed) return;
+        clearTimeout(timer);
         options.onStatus("Connecting");
         const current = new WebSocket(options.url);
         socket = current;
+        lastSeen = Date.now();
         current.binaryType = "arraybuffer";
         current.onopen = () => {
           if (disposed || current !== socket) return;
+          lastSeen = Date.now();
           attempt = 0;
           terminal.reset();
           resize();
@@ -189,6 +194,8 @@ export function mountTerminal(options: TerminalMount): () => void {
         };
         current.onmessage = (e) => {
           if (disposed || current !== socket) return;
+          lastSeen = Date.now();
+          if (isHeartbeat(e.data)) return;
           if (typeof e.data === "string" && e.data.startsWith("{")) {
             const message = JSON.parse(e.data);
             if (message.type === "geometry") {
@@ -218,6 +225,19 @@ export function mountTerminal(options: TerminalMount): () => void {
       });
       observer.observe(surface);
       connect();
+      subscriptions.push({
+        dispose: watchSocket({
+          socket: () => socket,
+          lastSeen: () => lastSeen,
+          reconnect: () => {
+            const stale = socket;
+            socket = undefined;
+            stale?.close();
+            attempt = 0;
+            connect();
+          },
+        }),
+      });
     })
     .catch(fail);
   return dispose;

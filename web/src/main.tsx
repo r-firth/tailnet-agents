@@ -80,6 +80,7 @@ import {
   type ViewSpec,
 } from "./AgentFeatures";
 import { InstallApp, registerServiceWorker } from "./InstallApp";
+import { isHeartbeat, watchSocket } from "./socket-liveness";
 import hubMark from "./assets/mark.svg";
 
 const MemoryViewer = React.lazy(() => import("./MemoryViewer"));
@@ -276,7 +277,8 @@ function App() {
   );
   useEffect(() => {
     let dead = false;
-    let socket: WebSocket;
+    let socket: WebSocket | undefined;
+    let lastSeen = 0;
     let timer: ReturnType<typeof setTimeout>;
     let debounce: ReturnType<typeof setTimeout> | undefined;
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -289,12 +291,20 @@ function App() {
     };
     const connect = () => {
       if (dead) return;
-      socket = new WebSocket(wsUrl("/events"));
-      socket.onopen = () => {
+      clearTimeout(timer);
+      const current = new WebSocket(wsUrl("/events"));
+      socket = current;
+      lastSeen = Date.now();
+      current.onopen = () => {
+        if (current !== socket) return;
+        lastSeen = Date.now();
         setConnection("Connected");
         refresh();
       };
-      socket.onmessage = (message) => {
+      current.onmessage = (message) => {
+        if (current !== socket) return;
+        lastSeen = Date.now();
+        if (isHeartbeat(message.data)) return;
         let event: Event;
         try {
           event = JSON.parse(message.data);
@@ -324,16 +334,28 @@ function App() {
         // deltas do not require repeatedly fetching the entire workspace.
         if (!/^(message\.|tool\.|agent\.)/.test(event.kind)) scheduleRefresh();
       };
-      socket.onclose = () => {
-        if (!dead) {
+      current.onclose = () => {
+        if (!dead && current === socket) {
           setConnection("Reconnecting");
           timer = setTimeout(connect, 2500);
         }
       };
     };
     connect();
+    const unwatch = watchSocket({
+      socket: () => socket,
+      lastSeen: () => lastSeen,
+      reconnect: () => {
+        const stale = socket;
+        socket = undefined;
+        stale?.close();
+        setConnection("Reconnecting");
+        connect();
+      },
+    });
     return () => {
       dead = true;
+      unwatch();
       clearTimeout(timer);
       clearTimeout(debounce);
       clearTimeout(flushTimer);
