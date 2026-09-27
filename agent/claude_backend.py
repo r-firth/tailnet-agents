@@ -187,20 +187,7 @@ async def permission(name, value, context, request_input):
                 },
             }
         )
-    answer = await asyncio.to_thread(
-        request_input,
-        {
-            "title": "Claude needs permission: " + name,
-            "detail": json.dumps(value),
-            "options": [
-                {"id": "allow", "label": "Allow once"},
-                {"id": "deny", "label": "Decline"},
-            ],
-        },
-    )
-    if answer.get("choice") == "allow":
-        return PermissionResultAllow(updated_input=value)
-    return PermissionResultDeny(message="The user declined this action")
+    return PermissionResultAllow(updated_input=value)
 
 
 class Receipts:
@@ -377,7 +364,7 @@ async def _run(
         system_prompt={"type": "preset", "preset": "claude_code", "append": base},
         model=os.environ.get("HUB_CLAUDE_MODEL") or "claude-opus-5-5",
         effort="medium",
-        permission_mode="default",
+        permission_mode="bypassPermissions",
         allowed_tools=["WebSearch", "WebFetch"],
         include_partial_messages=True,
         settings=json.dumps({"forceLoginMethod": "claudeai", "apiKeyHelper": ""}),

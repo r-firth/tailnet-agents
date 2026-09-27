@@ -32,7 +32,7 @@ from pathlib import Path
 assert sys.argv[sys.argv.index('--permission-prompt-tool')+1]=='stdio'
 assert sys.argv[sys.argv.index('--allowedTools')+1]=='WebSearch,WebFetch'
 assert '--bare' not in sys.argv
-assert '--dangerously-skip-permissions' not in sys.argv
+assert sys.argv[sys.argv.index('--permission-mode')+1]=='bypassPermissions'
 assert sys.argv[sys.argv.index('--model')+1]=='claude-opus-5-5'
 assert sys.argv[sys.argv.index('--effort')+1]=='medium'
 def send(v): print(json.dumps(v),flush=True)
@@ -59,7 +59,7 @@ for line in sys.stdin:
    assert sys.argv[sys.argv.index('--resume')+1]=='existing-session'
    send({'type':'control_request','request_id':'permission-1','request':{'subtype':'can_use_tool','tool_name':'Bash','input':{'command':'echo fixture'},'tool_use_id':'t'}})
    reply=json.loads(sys.stdin.readline())
-   assert reply['response']['response']['behavior']=='deny',reply
+   assert reply['response']['response']['behavior']=='allow',reply
    send({'type':'stream_event','uuid':'e','session_id':'native-session','event':{'type':'content_block_delta','delta':{'type':'text_delta','text':'Fresh answer'}}})
    send({'type':'assistant','message':{'role':'assistant','model':'fixture','content':[{'type':'text','text':'Fresh answer'},{'type':'tool_use','id':'t','name':'Read','input':{'file_path':'README'}}]}})
    send({'type':'user','message':{'role':'user','content':[{'type':'tool_result','tool_use_id':'t','content':'contents'}]}})
@@ -356,7 +356,9 @@ class ClaudeTests(unittest.TestCase):
                         reverse=(32123, 4318) if target else None,
                         servers={},
                         schema=schema,
-                        request_input=lambda _: {"choice": "deny"},
+                        request_input=lambda _: self.fail(
+                            "Unexpected permission prompt"
+                        ),
                         call_tool=lambda name, args: (
                             calls.append((name, args)) or {"ok": True}
                         ),
@@ -497,12 +499,15 @@ class ClaudeTests(unittest.TestCase):
                     claude.check_subscription(None, "/tmp")
                 self.assertNotIn("secret", str(error.exception))
 
-    def test_permissions_fail_closed_and_questions_preserve_answers(self):
+    def test_tools_run_without_prompts_and_questions_preserve_answers(self):
         async def check():
-            denied = await claude.permission(
-                "Bash", {"command": "rm file"}, None, lambda _: {"choice": "deny"}
+            allowed = await claude.permission(
+                "Bash",
+                {"command": "echo fixture"},
+                None,
+                lambda _: self.fail("Unexpected permission prompt"),
             )
-            self.assertIsInstance(denied, PermissionResultDeny)
+            self.assertIsInstance(allowed, PermissionResultAllow)
             allowed = await claude.permission(
                 "Read", {"file_path": "README"}, None, lambda _: {"choice": "allow"}
             )
@@ -515,6 +520,13 @@ class ClaudeTests(unittest.TestCase):
                 lambda _: {"answers": {"0": "main"}},
             )
             self.assertEqual(answer.updated_input["answers"], {"Which branch?": "main"})
+            unanswered = await claude.permission(
+                "AskUserQuestion",
+                {"questions": [{"question": "Which branch?", "options": []}]},
+                None,
+                lambda _: {},
+            )
+            self.assertIsInstance(unanswered, PermissionResultDeny)
 
         asyncio.run(check())
 

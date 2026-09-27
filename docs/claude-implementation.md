@@ -18,11 +18,11 @@ were made in place without resetting or replacing the existing checkout.
   delegation. Native sessions cannot start, follow up, or stop delegated agents;
   server restrictions and the MCP listing enforce this independently of provider.
 - Saved native session IDs support follow-up/resume on the original device.
-  Streaming text, structured coordinator text, tool receipts, approval requests,
+  Streaming text, structured coordinator text, tool receipts,
   user questions, cancellation/interrupt, and safe errors are handled.
 - Subscription sign-in is checked through the CLI. API authentication environment
-  variables are removed, no API fallback is configured, and neither `--bare` nor
-  permission bypass is used. The adapter never reads credential files.
+  variables are removed, no API fallback is configured, and `--bare` is not used.
+  The adapter never reads credential files.
 
 ## Changed source files
 
@@ -146,9 +146,10 @@ rejected before an inline approval appeared. The pinned SDK sets
 `permission_prompt_tool_name="stdio"` on an options copy that custom transports
 never receive. The device transport now mirrors that setting on its own copy;
 the client keeps the original callback options. The local/SSH protocol fixtures
-assert the actual permission-routing CLI argument and exercise permission denial.
-WebSearch and WebFetch are explicitly allowed for ordinary web access; user and
-project deny/ask rules still apply, and other requests retain inline approval.
+assert the actual permission-routing CLI argument and `bypassPermissions` mode,
+and verify tool callbacks allow execution without requesting input. Clarification
+questions retain their input flow. Codex uses `never` approvals with
+`danger-full-access` for both fresh and resumed sessions.
 No user or machine-wide Claude settings are changed.
 
 Claude WebSearch/WebFetch, Bash, Read/Grep/Glob, and Edit/Write/NotebookEdit receipts

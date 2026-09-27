@@ -553,8 +553,7 @@ The workspace tool descriptions explain their arguments:
             "model": model,
             "developerInstructions": base,
             "cwd": agent["cwd"] if agent else cwd,
-            "approvalPolicy": "on-request",
-            "approvalsReviewer": "auto_review",
+            "approvalPolicy": "never",
             "sandbox": "danger-full-access",
             "experimentalRawEvents": True,
         }

@@ -119,6 +119,9 @@ class WorkerTests(unittest.TestCase):
         resume = next(value for kind, value in calls if kind == "resume")
         self.assertEqual(resume["threadId"], "saved-thread")
         self.assertEqual(resume["cwd"], "/work/game")
+        self.assertEqual(resume["approvalPolicy"], "never")
+        self.assertEqual(resume["sandbox"], "danger-full-access")
+        self.assertNotIn("approvalsReviewer", resume)
         self.assertIn("desktop", calls[0][1])
         frames = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertEqual(
@@ -370,6 +373,8 @@ class WorkerTests(unittest.TestCase):
             def turn(self, *args, **kwargs):
                 return SimpleNamespace(stream=lambda: iter(events))
 
+        testcase = self
+
         class FakeCodex:
             def __init__(self, config, **kwargs):
                 pass
@@ -384,6 +389,9 @@ class WorkerTests(unittest.TestCase):
                 pass
 
             def thread_start(self, params):
+                testcase.assertEqual(params["approvalPolicy"], "never")
+                testcase.assertEqual(params["sandbox"], "danger-full-access")
+                testcase.assertNotIn("approvalsReviewer", params)
                 Path(params["cwd"], "artifact.txt").write_text("keep me")
                 return SimpleNamespace(thread=SimpleNamespace(id="codex-thread"))
 
