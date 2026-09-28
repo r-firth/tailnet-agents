@@ -18,16 +18,13 @@
   <a href="CONTRIBUTING.md">Development</a>
 </p>
 
-<p align="center">
-  <a href="docs/demo/surroundfold.mp4">
-    <img src="docs/demo/surroundfold.gif" alt="Tailnet Agents starts a SurroundFold render on a media server, shows the terminal, and follows the work through its memory graph." width="1280">
-  </a>
-</p>
+https://github.com/user-attachments/assets/92b7cb20-cc6b-4ace-a800-749be50cf64e
 
 <p align="center">
-  <a href="docs/demo/surroundfold.mp4">Watch the 35-second demo</a> ·
+  <a href="docs/demo/showreel.mp4">▶ Watch the 33-second showreel — 1080p · 60 fps · sound</a><br>
+  <a href="docs/demo/surroundfold.mp4">Watch the workflow walkthrough</a> ·
   <a href="docs/demo/README.md">Try the walkthrough locally</a><br>
-  <sub>Actual Tailnet Agents UI. Scripted SurroundFold workflow with synthetic media, devices, and activity.</sub>
+  <sub>3D animation with actual Tailnet Agents UI and synthetic demo data. Play above with sound.</sub>
 </p>
 
 ## What is Tailnet Agents?

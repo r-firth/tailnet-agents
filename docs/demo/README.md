@@ -1,4 +1,19 @@
-# SurroundFold walkthrough
+# Showreel and walkthrough
+
+[Watch the showreel](showreel.mp4) · [Animated preview](showreel.gif) ·
+[Poster](showreel.png)
+
+The 33-second showreel is a 1920 × 1080, 60 fps H.264 video with a stereo AAC
+soundtrack generated from code. The 3D animation is rendered at 60 distinct time
+steps per second; the app footage inside it retains its original capture cadence.
+It introduces the devices, coordinator, visible terminal work, memory, and mobile UI.
+The network and memory scenes are stylized illustrations. App screens come from the
+isolated demo with synthetic devices and activity, not a personal workspace.
+
+The README embeds the GitHub-hosted video player. The GIF is
+a 640-pixel, 10 fps silent preview; use the MP4 for smooth playback and sound.
+
+## SurroundFold walkthrough
 
 [Watch the video](surroundfold.mp4) · [Animated preview](surroundfold.gif) ·
 [Still image](surroundfold.png)
