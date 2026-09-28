@@ -29,7 +29,8 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 from claude_agent_sdk.types import StreamEvent
-from jsonschema import validate
+from context import tool_context
+from protocol import ToolProtocolError, correction_prompt, parse_decision
 from pydantic_core import from_json
 
 # Never inherit API/alternate-provider authentication or host workspace secrets.
@@ -187,20 +188,7 @@ async def permission(name, value, context, request_input):
                 },
             }
         )
-    answer = await asyncio.to_thread(
-        request_input,
-        {
-            "title": "Claude needs permission: " + name,
-            "detail": json.dumps(value),
-            "options": [
-                {"id": "allow", "label": "Allow once"},
-                {"id": "deny", "label": "Decline"},
-            ],
-        },
-    )
-    if answer.get("choice") == "allow":
-        return PermissionResultAllow(updated_input=value)
-    return PermissionResultDeny(message="The user declined this action")
+    return PermissionResultAllow(updated_input=value)
 
 
 class Receipts:
@@ -299,6 +287,17 @@ class Receipts:
                 self.emit("message.delta", message_id=self.identity, delta=delta)
         elif isinstance(message, AssistantMessage):
             if message.error:
+                if message.error == "server_error" and any(
+                    isinstance(block, TextBlock)
+                    and block.text.startswith("Failed to refresh OAuth token:")
+                    for block in message.content
+                ):
+                    raise ClaudeError(
+                        "Claude sign-in refresh failed. Another Claude Code process may "
+                        "be refreshing the token or may have left a refresh lock. "
+                        "Retry in a minute; if it persists, sign in to Claude again "
+                        "on the execution device."
+                    )
                 raise ClaudeError(
                     "Claude authentication failed. Run claude auth login on the execution device."
                     if message.error == "authentication_failed"
@@ -377,7 +376,7 @@ async def _run(
         system_prompt={"type": "preset", "preset": "claude_code", "append": base},
         model=os.environ.get("HUB_CLAUDE_MODEL") or "claude-opus-5-5",
         effort="medium",
-        permission_mode="default",
+        permission_mode="bypassPermissions",
         allowed_tools=["WebSearch", "WebFetch"],
         include_partial_messages=True,
         settings=json.dumps({"forceLoginMethod": "claudeai", "apiKeyHelper": ""}),
@@ -397,6 +396,7 @@ async def _run(
     loop.add_signal_handler(signal.SIGUSR1, current.cancel)
     try:
         await client.connect()
+        protocol_errors = 0
         for _ in range(50):
             native.emit("status", text="Thinking")
             await client.query(prompt)
@@ -415,8 +415,14 @@ async def _run(
                 )
             if not schema:
                 return
-            decision = result.structured_output
-            validate(decision, schema)
+            try:
+                decision = parse_decision(result.structured_output, schema)
+            except ToolProtocolError as error:
+                protocol_errors += 1
+                prompt = correction_prompt(error, protocol_errors)
+                native.emit("status", text="Correcting a malformed tool request")
+                continue
+            protocol_errors = 0
             receipts.finish_decision(decision["text"])
             title = " ".join(decision["title"].split()).strip('"')[:80]
             if needs_title and title:
@@ -426,9 +432,7 @@ async def _run(
                 return
             results = []
             for call in decision["tools"]:
-                args = json.loads(call["arguments_json"])
-                if not isinstance(args, dict):
-                    raise ValueError("Tool arguments must be an object")
+                args = call["arguments"]
                 try:
                     result = await asyncio.to_thread(call_tool, call["name"], args)
                 except Exception as error:
@@ -439,7 +443,7 @@ async def _run(
                         + ")",
                     }
                 results.append({"name": call["name"], "result": result})
-            prompt = json.dumps({"tool_receipts": results})
+            prompt = tool_context(results)
         raise ClaudeError(
             "Reached the turn's tool-round limit. Send another message to continue."
         )

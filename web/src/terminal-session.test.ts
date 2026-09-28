@@ -393,6 +393,31 @@ it("reconnects without stealing sizing from a more recent viewer and cancels ret
     f.dispose();
   }
 });
+it("ignores heartbeats and skips the retry wait when the app returns", async () => {
+  const f = fixture();
+  try {
+    f.resolve();
+    await vi.waitFor(() => expect(Socket.all).toHaveLength(1));
+    vi.useFakeTimers();
+    Socket.all[0].open();
+    const written = f.writes.length;
+    Socket.all[0].onmessage?.({ data: new ArrayBuffer(0) });
+    expect(f.writes).toHaveLength(written);
+    Socket.all[0].close();
+    await vi.advanceTimersByTimeAsync(1000);
+    Socket.all[1].close();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(Socket.all).toHaveLength(2);
+    // The app is backing off; returning to it must reconnect right away.
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(Socket.all).toHaveLength(3);
+    Socket.all[2].open();
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(Socket.all).toHaveLength(3);
+  } finally {
+    f.dispose();
+  }
+});
 it("reports initialization failure without opening a socket", async () => {
   const onError = vi.fn();
   const dispose = mountTerminal({

@@ -14,10 +14,12 @@ from urllib.parse import urlsplit
 
 import claude_backend
 import native
+from context import compact, conversation_context, tool_context
 from openai_codex import CodexConfig, TextInput, Thread
 from openai_codex.client import CodexClient
 from openai_codex.models import UnknownNotification
 from openai_codex.types import ReasoningEffort
+from protocol import ToolProtocolError, correction_prompt, parse_decision
 from pydantic_core import from_json
 
 TOOL_SPECS = json.loads(Path(__file__).with_name("tools.json").read_text())
@@ -35,7 +37,10 @@ SCHEMA = {
                 "additionalProperties": False,
                 "properties": {
                     "name": {"type": "string", "enum": list(TOOLS)},
-                    "arguments_json": {"type": "string"},
+                    "arguments_json": {
+                        "type": "string",
+                        "description": "A serialized JSON object. Escape newlines, quotes and backslashes in its string values; never include raw control characters.",
+                    },
                 },
                 "required": ["name", "arguments_json"],
             },
@@ -257,7 +262,9 @@ def run_decision(thread, prompt, model, structured=True):
             emit("status", label or f"Using {name.replace('_', ' ')}")
     if not completed or final is None:
         raise RuntimeError("Codex ended without a completed response")
-    decision = json.loads(final) if structured else {"text": final, "tools": []}
+    decision = (
+        parse_decision(final, SCHEMA) if structured else {"text": final, "tools": []}
+    )
     if decision.get("text"):
         emit("message", decision["text"], **final_identity)
     return decision
@@ -275,7 +282,7 @@ def call_tool(chat_id, name, arguments):
     )
     # SSH check mode may wait up to 15 minutes for the user's browser sign-in.
     with urllib.request.urlopen(request, timeout=16 * 60) as response:
-        return json.load(response)
+        return compact(json.load(response))
 
 
 def hub_request(path, payload=None):
@@ -409,16 +416,7 @@ Custom views are part of this app, not separately branded websites. For show_ui,
 Device IDs and session IDs are exact identifiers. Resolve machines using list_devices. Use search_memory when prior context matters. Do not invent connected machines or completed work. Host tools are the source of truth.
 """ + json.dumps(TOOLS)
     history = task["history"]
-    # Keep recent complete event records; durable originals remain in Vecgra.
-    context = json.dumps(
-        {
-            "history": history[-100:],
-            "needs_title": task.get("needs_title", False),
-            "conversation": task.get("conversation"),
-            "devices": task["devices"],
-            "sessions": task["sessions"],
-        }
-    )
+    context = conversation_context(task)
     root = Path(os.environ.get("HUB_ROOT", Path(__file__).resolve().parents[1]))
     cwd = Path(os.environ.get("HUB_DATA_DIR", root / "data")) / "workspace"
     cwd.mkdir(parents=True, exist_ok=True)
@@ -553,8 +551,7 @@ The workspace tool descriptions explain their arguments:
             "model": model,
             "developerInstructions": base,
             "cwd": agent["cwd"] if agent else cwd,
-            "approvalPolicy": "on-request",
-            "approvalsReviewer": "auto_review",
+            "approvalPolicy": "never",
             "sandbox": "danger-full-access",
             "experimentalRawEvents": True,
         }
@@ -577,12 +574,20 @@ The workspace tool descriptions explain their arguments:
         thread = Thread(codex, started.thread.id)
         prompt = context
         needs_title = task.get("needs_title", False)
+        protocol_errors = 0
         for _ in range(50):
             emit(
                 "status",
                 "Thinking" if prompt == context else "Reviewing the results",
             )
-            decision = run_decision(thread, prompt, model)
+            try:
+                decision = run_decision(thread, prompt, model)
+            except ToolProtocolError as error:
+                protocol_errors += 1
+                prompt = correction_prompt(error, protocol_errors)
+                emit("status", "Correcting a malformed tool request")
+                continue
+            protocol_errors = 0
             title = " ".join(str(decision.get("title") or "").split()).strip('"')[:80]
             if needs_title and title:
                 emit("title", name=title)
@@ -595,14 +600,14 @@ The workspace tool descriptions explain their arguments:
                 name = call["name"]
                 if name not in TOOLS:
                     raise ValueError("Unknown requested tool")
-                args = json.loads(call["arguments_json"])
+                args = call["arguments"]
                 emit("status", name.replace("_", " ").capitalize())
                 try:
                     receipt = call_tool(task["chat_id"], name, args)
                 except Exception as exc:
                     receipt = {"ok": False, "error": str(exc)}
                 receipts.append({"name": name, "result": receipt})
-            prompt = json.dumps({"tool_receipts": receipts})
+            prompt = tool_context(receipts)
         emit(
             "error",
             "Reached the turn's tool-round limit. Terminal processes remain available; send another message to continue.",

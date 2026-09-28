@@ -161,7 +161,7 @@ successful authentication. No credentials are copied from your workstation to a
 remote machine. The adapter checks the CLI's authentication status, requires
 `claude.ai`, clears API/alternate-provider authentication environment variables,
 and uses a per-process `forceLoginMethod: claudeai` setting. It never invokes
-`--bare`, bypasses permissions, chooses an API fallback, or uses the SDK-bundled CLI.
+`--bare`, chooses an API fallback, or uses the SDK-bundled CLI.
 Account-side limits and billing settings remain controlled by Anthropic.
 
 `HUB_MODEL` remains Codex-only. Claude defaults to `claude-opus-5-5` (Opus 5.5)
@@ -169,8 +169,10 @@ with explicit `medium` effort for both coordinator and native sessions. Optional
 `HUB_CLAUDE_MODEL` overrides the model. Opus 5.5 requires Claude Code 2.1.280 or
 later on every execution device; the app does not upgrade installed CLIs. No machine-wide settings
 are written. User/project Claude settings, skills and tools are loaded normally.
-Native tool approvals and `AskUserQuestion` requests appear in the conversation;
-declined requests remain declined. The stop button interrupts Claude before the
+Claude runs with `bypassPermissions`; Codex runs with approval policy `never` and
+`danger-full-access`. These settings apply to new and resumed coordinator/native
+sessions, locally and over SSH. Tool execution does not require approval.
+`AskUserQuestion` clarification requests still appear in the conversation. The stop button interrupts Claude before the
 worker process group is terminated as a cleanup fallback.
 
 Remote execution uses the pinned official Python Agent SDK on the hub, with its
