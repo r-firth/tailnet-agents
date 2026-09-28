@@ -47,7 +47,8 @@ for line in sys.stdin:
   send({'type':'system','subtype':'init','session_id':'native-session'})
   if q['message']['content']=='CANCEL': continue
   if '--json-schema' in sys.argv:
-   decision={'text':'Working' if rounds==1 else 'Done','title':'Fixture title','tools':[{'name':'list_devices','arguments_json':'{}'}] if rounds==1 else []}
+   decisions=json.loads(os.environ.get('FIXTURE_DECISIONS','[]'))
+   decision=decisions[rounds-1] if decisions else {'text':'Working' if rounds==1 else 'Done','title':'Fixture title','tools':[{'name':'list_devices','arguments_json':'{}'}] if rounds==1 else []}
    send({'type':'stream_event','uuid':'start','session_id':'native-session','event':{'type':'content_block_start','index':0,'content_block':{'type':'tool_use','name':'StructuredOutput'}}})
    raw=json.dumps(decision)
    for part in [raw[:12],raw[12:]]:
@@ -68,6 +69,23 @@ for line in sys.stdin:
 
 
 class ReceiptTests(unittest.TestCase):
+    def test_refresh_collision_reports_recovery_without_dumping_provider_text(self):
+        receipts = claude.Receipts()
+        with self.assertRaisesRegex(claude.ClaudeError, "sign-in refresh") as error:
+            receipts.accept(
+                AssistantMessage(
+                    content=[
+                        TextBlock(
+                            text="Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh. secret detail"
+                        )
+                    ],
+                    model="fixture",
+                    error="server_error",
+                )
+            )
+        self.assertIn("Retry in a minute", str(error.exception))
+        self.assertNotIn("secret detail", str(error.exception))
+
     def setUp(self):
         self.frames = []
         patched = patch.object(
@@ -313,7 +331,7 @@ class ReceiptTests(unittest.TestCase):
 
 
 class ClaudeTests(unittest.TestCase):
-    def run_fixture(self, schema=None, target=None, cancel=False):
+    def run_fixture(self, schema=None, target=None, cancel=False, decisions=None):
         output = io.StringIO()
         calls = []
         original_emit = claude.native.emit
@@ -340,6 +358,7 @@ class ClaudeTests(unittest.TestCase):
                         "PATH": directory + ":" + os.environ["PATH"],
                         "FIXTURE_INTERRUPT": str(marker),
                         "HUB_CLAUDE_MODEL": "",
+                        "FIXTURE_DECISIONS": json.dumps(decisions or []),
                     },
                 ),
                 patch.object(claude, "check_subscription"),
@@ -411,6 +430,26 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(
             [f["name"] for f in frames if f["type"] == "title"], ["Fixture title"]
         )
+
+    def test_malformed_batch_can_be_corrected_without_partial_execution(self):
+        good = {"name": "list_devices", "arguments_json": "{}"}
+        bad = {"name": "terminal_send", "arguments_json": '{"text":"one\ntwo"}'}
+        fixed = {
+            "name": "terminal_send",
+            "arguments_json": json.dumps({"text": "one\ntwo"}),
+        }
+        frames, calls = self.run_fixture(
+            schema=SCHEMA,
+            decisions=[
+                {"text": "", "title": "", "tools": [good, bad]},
+                {"text": "", "title": "", "tools": [good, fixed]},
+                {"text": "Done", "title": "", "tools": []},
+            ],
+        )
+        self.assertEqual(
+            calls, [("list_devices", {}), ("terminal_send", {"text": "one\ntwo"})]
+        )
+        self.assertIn("Done", [f["text"] for f in frames if f["type"] == "message"])
 
     def test_remote_transport_quotes_project_and_uses_device_cli(self):
         options = ClaudeAgentOptions(

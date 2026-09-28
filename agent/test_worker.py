@@ -65,12 +65,212 @@ FINAL = {
     "type": "agentMessage",
     "phase": "final_answer",
     "text": json.dumps(
-        {"text": "Verified answer [source](https://example.com)", "tools": []}
+        {
+            "text": "Verified answer [source](https://example.com)",
+            "title": "",
+            "tools": [],
+        }
     ),
 }
 
 
 class WorkerTests(unittest.TestCase):
+    def test_malformed_tool_batch_is_corrected_before_any_command_executes(self):
+        command = "python3 - <<'PY'\nprint('quote: \\\" and path C:\\\\temp')\nPY\n"
+        malformed = '{"session_id":"session-1","text":"line one\nline two"}'
+        decisions = iter(
+            [
+                {
+                    "text": "",
+                    "title": "",
+                    "tools": [
+                        {"name": "list_devices", "arguments_json": "{}"},
+                        {"name": "terminal_send", "arguments_json": malformed},
+                    ],
+                },
+                {
+                    "text": "",
+                    "title": "",
+                    "tools": [
+                        {"name": "list_devices", "arguments_json": "{}"},
+                        {
+                            "name": "terminal_send",
+                            "arguments_json": json.dumps(
+                                {"session_id": "session-1", "text": command}
+                            ),
+                        },
+                    ],
+                },
+                json.loads(FINAL["text"]),
+            ]
+        )
+        executed, prompts = [], []
+
+        def events(prompt):
+            decision = next(decisions)
+            if len(prompts) == 2:
+                self.assertEqual(
+                    executed, [], "Invalid batches must not partly execute"
+                )
+                self.assertIn("not executed", prompt)
+            return [
+                item_event("item/completed", {**FINAL, "text": json.dumps(decision)}),
+                completed(),
+            ]
+
+        with (
+            tempfile.TemporaryDirectory() as data,
+            patch.object(
+                worker,
+                "call_tool",
+                side_effect=lambda chat, name, args: (
+                    executed.append((name, args)) or {"ok": True}
+                ),
+            ),
+        ):
+            frames = self.run_worker(events, data, prompts=prompts)
+        self.assertEqual(
+            executed,
+            [
+                ("list_devices", {}),
+                ("terminal_send", {"session_id": "session-1", "text": command}),
+            ],
+        )
+        self.assertEqual(len(prompts), 3)
+        self.assertTrue(
+            any(
+                f["type"] == "message"
+                and f.get("text") == json.loads(FINAL["text"])["text"]
+                for f in frames
+            )
+        )
+
+    def test_malformed_decision_is_corrected_in_the_same_turn(self):
+        responses = iter(
+            ['{"text":"raw\nnewline","title":"","tools":[]}', FINAL["text"]]
+        )
+        prompts = []
+
+        def events(prompt):
+            return [
+                item_event("item/completed", {**FINAL, "text": next(responses)}),
+                completed(),
+            ]
+
+        with tempfile.TemporaryDirectory() as data:
+            self.run_worker(events, data, prompts=prompts)
+        self.assertEqual(len(prompts), 2)
+        self.assertIn("not executed", prompts[1])
+
+    def test_invalid_tool_arguments_are_not_guessed_or_executed(self):
+        for arguments in ['{"text":"bad\\qescape"}', "[]", '{"text":"bad "quote""}']:
+            with self.subTest(arguments=arguments):
+                bad = {
+                    "text": "",
+                    "title": "",
+                    "tools": [{"name": "terminal_send", "arguments_json": arguments}],
+                }
+                responses = iter([json.dumps(bad), FINAL["text"]])
+
+                def events(prompt):
+                    return [
+                        item_event(
+                            "item/completed", {**FINAL, "text": next(responses)}
+                        ),
+                        completed(),
+                    ]
+
+                with (
+                    tempfile.TemporaryDirectory() as data,
+                    patch.object(
+                        worker,
+                        "call_tool",
+                        side_effect=AssertionError("Invalid command was executed"),
+                    ),
+                ):
+                    self.run_worker(events, data)
+
+    def test_repeated_malformed_responses_stop_after_three_attempts(self):
+        prompts = []
+        bad = {**FINAL, "text": '{"text":"raw\nnewline"}'}
+        with tempfile.TemporaryDirectory() as data:
+            with self.assertRaisesRegex(
+                RuntimeError, "malformed tool data three times"
+            ):
+                self.run_worker(
+                    [item_event("item/completed", bad), completed()],
+                    data,
+                    prompts=prompts,
+                )
+        self.assertEqual(len(prompts), 3)
+
+    def test_large_history_is_bounded_without_losing_latest_user_request(self):
+        prompts = []
+        latest = "Please keep the voice settings unchanged. " * 400
+        history = [
+            {
+                "id": 1,
+                "scope": "hub-chat",
+                "kind": "tool.result",
+                "payload": {
+                    "name": "search_memory",
+                    "result": {
+                        "ok": True,
+                        "result": [
+                            {
+                                "id": 44,
+                                "scope": "old-chat",
+                                "payload": {"output": "🌍" * 1_100_000},
+                            }
+                        ],
+                    },
+                },
+            },
+            {
+                "id": 2,
+                "scope": "hub-chat",
+                "kind": "message.user",
+                "payload": {"text": latest},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as data:
+            self.run_worker(
+                [item_event("item/completed", FINAL), completed()],
+                data,
+                {"history": history},
+                prompts,
+            )
+        self.assertLessEqual(len(prompts[0].encode()), 256_000)
+        context = json.loads(prompts[0])
+        self.assertEqual(context["history"][-1]["payload"]["text"], latest)
+        self.assertEqual(
+            len(history[0]["payload"]["result"]["result"][0]["payload"]["output"]),
+            1_100_000,
+        )
+
+    def test_tool_reply_is_bounded_before_it_reaches_any_provider(self):
+        record = {
+            "id": 44,
+            "scope": "old-chat",
+            "kind": "tool.result",
+            "payload": {"output": "log line\n" * 500_000},
+        }
+        result = {"ok": True, "result": [record]}
+        raw = json.dumps(result).encode()
+        with (
+            patch.dict(os.environ, {"HUB_URL": "http://test.invalid"}),
+            patch.object(
+                worker.urllib.request, "urlopen", return_value=io.BytesIO(raw)
+            ),
+        ):
+            reply = worker.call_tool("hub-chat", "search_memory", {"query": "voice"})
+        self.assertLessEqual(
+            len(json.dumps(reply, ensure_ascii=False).encode()), 64_000
+        )
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["result"][0]["id"], 44)
+        self.assertEqual(reply["result"][0]["scope"], "old-chat")
+
     def test_native_codex_resumes_the_saved_thread_on_its_device(self):
         output = io.StringIO()
         calls = []
@@ -365,13 +565,19 @@ class WorkerTests(unittest.TestCase):
             next(i for i, f in enumerate(frames) if f["type"] == "tool.result"),
         )
 
-    def run_worker(self, events, data, task_extra=None):
+    def run_worker(self, events, data, task_extra=None, prompts=None):
         class FakeThread:
             def run(self, *args, **kwargs):
                 return SimpleNamespace(final_response=FINAL["text"])
 
             def turn(self, *args, **kwargs):
-                return SimpleNamespace(stream=lambda: iter(events))
+                if prompts is not None:
+                    prompts.append(args[0][0].text)
+                return SimpleNamespace(
+                    stream=lambda: iter(
+                        events(args[0][0].text) if callable(events) else events
+                    )
+                )
 
         testcase = self
 
