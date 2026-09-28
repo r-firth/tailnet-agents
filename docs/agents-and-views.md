@@ -6,11 +6,31 @@ The coordinator can also delegate naturally: “Use Codex on desktop to work on 
 
 Codex uses its [native app-server protocol](https://developers.openai.com/codex/app-server), including streaming messages, tool events and persisted thread IDs. Copilot uses [ACP over stdio](https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server). Remote Copilot requires SSH reverse forwarding to loopback for workspace tools. The bridge token is scoped to that conversation and revoked when the turn ends. No workspace-wide token is sent to a remote device. Copilot needs an ACP release advertising session loading and HTTP MCP support.
 
-Claude uses the official Agent SDK over the selected device's authenticated CLI, with SSH stdio and a loopback reverse forward for remote workspace tools. It defaults to Opus 5.5 at medium effort and requires Claude Code 2.1.280 or later for that model. See [Claude setup](../README.md#claude-sessions). Native sessions cannot delegate regardless of provider; that capability belongs to the coordinator role.
+Claude uses the official Agent SDK over the selected device's authenticated CLI, with SSH stdio and a loopback reverse forward for remote workspace tools. It defaults to Opus 5.5 at medium effort and requires Claude Code 2.1.280 or later for that model. See [Claude sessions](#claude-sessions). Native sessions cannot delegate regardless of provider; that capability belongs to the coordinator role.
 
 These adapters create and resume sessions started in Tailnet Agents. Importing arbitrary sessions previously started in other clients is not part of this release. The current transport expects a POSIX SSH shell on remote machines; native Windows shells need a separate transport adapter.
 
 When a workspace SSH tool encounters a [Tailscale SSH check](https://tailscale.com/docs/features/tailscale-ssh#configure-tailscale-ssh-with-check-mode), it displays **Sign in with Tailscale** in the conversation. Complete that sign-in yourself; the original connection waits for up to 15 minutes and continues automatically after approval. Cancel, Stop, or closing the session cancels the attempt. Other sessions remain usable. The coordinator treats this as reauthentication, not an offline device or a reason to try another SSH route. Background probes do not open sign-in prompts; initiate the operation from a conversation when authentication is needed.
+
+## Claude sessions
+
+Choose **Coordinator → Claude** for a host-side coordinator, or **Claude** for a native session on a registered device and absolute project directory. Existing conversations keep Codex as their coordinator backend. A Claude coordinator can delegate to any supported provider. Follow-ups resume the saved Claude session on its original device and project.
+
+Install the official Claude Code CLI yourself on every execution machine, then run `claude auth login` there with your Claude subscription. On CLI versions before 2.1.126, use `claude /login` for manual code entry over SSH. The server must run as the same OS user with `claude` on PATH. Discovery reports installation, not successful authentication. No credentials are copied between machines. The adapter requires `claude.ai` sign-in, clears API and alternate-provider authentication variables, and never uses `--bare`, an API fallback or the SDK-bundled CLI. Account limits and billing remain controlled by Anthropic.
+
+Claude defaults to `claude-opus-5-5` with `medium` effort; `HUB_CLAUDE_MODEL` overrides the model and `HUB_MODEL` remains Codex-only. Opus 5.5 needs Claude Code 2.1.280 or later on every execution device; the app does not upgrade installed CLIs or write machine-wide settings. User and project Claude settings, skills and tools load normally.
+
+Claude runs with `bypassPermissions`; Codex runs with approval policy `never` and `danger-full-access`, locally and over SSH. `AskUserQuestion` clarification requests still appear in the conversation. Stop interrupts Claude before terminating the worker process group as a fallback.
+
+Remote execution uses the pinned Python Agent SDK on the host, with its stdio transport carried over SSH to the unmodified `claude` CLI; the remote machine needs no Python or SDK. The remote SSH server must permit loopback reverse forwarding for workspace tools. This uses registered-device SSH, not Anthropic's Remote Control or cloud sessions. Upgrade the SDK transport adapter together with its protocol tests.
+
+After updating dependencies (`uv sync --project agent --group dev`), run `npm run check`. An optional live check, which uses subscription capacity, covers structured coordinator output, native streaming and resume in a temporary project:
+
+```sh
+agent/.venv/bin/python scripts/claude-smoke.py
+```
+
+References: [Agent SDK Python](https://code.claude.com/docs/en/agent-sdk/python), [CLI flags](https://code.claude.com/docs/en/cli-reference), [sessions](https://code.claude.com/docs/en/agent-sdk/sessions), [user input](https://code.claude.com/docs/en/agent-sdk/user-input), [subscription use](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan).
 
 ## Custom views in chat
 

@@ -1,17 +1,16 @@
-# Showreel and walkthrough
+# Demo
 
-[Watch the showreel](showreel.mp4) · [Animated preview](showreel.gif) ·
-[Poster](showreel.png)
+The README GIF is hosted as a
+[v0.1.0-alpha.2 release asset](https://github.com/r-firth/tailnet-agents/releases/download/v0.1.0-alpha.2/tailnet-agents-demo.gif),
+not in the repository. It is a 19-second, 1280 × 720 loop (about 1.4 MB) captured
+from the isolated demo below: a coordinator starts a SurroundFold render on a
+media server with its terminal in view, then Memory finds the run and opens its
+source record. Devices and data are synthetic.
 
-The 33-second showreel is a 1920 × 1080, 60 fps H.264 video with a stereo AAC
-soundtrack generated from code. The 3D animation is rendered at 60 distinct time
-steps per second; the app footage inside it retains its original capture cadence.
-It introduces the devices, coordinator, visible terminal work, memory, and mobile UI.
-The network and memory scenes are stylized illustrations. App screens come from the
-isolated demo with synthetic devices and activity, not a personal workspace.
-
-The README embeds the GitHub-hosted video player. The GIF is
-a 640-pixel, 10 fps silent preview; use the MP4 for smooth playback and sound.
+To regenerate it, run `npm run demo`, capture the `/`, `/memory?q=SurroundFold`
+and `/memory?q=SurroundFold&run=1001&anchor=1100` pages at a 1280 × 720 viewport,
+and encode a GIF with a shared palette and no dithering. Upload it to the release
+instead of committing it; generated media under `docs/demo/` is ignored.
 
 ## SurroundFold walkthrough
 

@@ -1,75 +1,65 @@
 <p align="center">
-  <img src="web/public/icons/hub-512.png" width="128" alt="Tailnet Agents logo">
+  <img src="web/public/icons/hub-512.png" width="96" alt="Tailnet Agents logo">
 </p>
 
 <h1 align="center">Tailnet Agents</h1>
 
 <p align="center">
-  A personal workspace for your agents, machines, and memory.<br>
-  Self-hosted, connected over Tailscale, and built to show its work.
+  A self-hosted browser workspace for running coding agents and terminals on your
+  own machines over Tailscale, with a searchable record of the work.
 </p>
 
-<p align="center">
-  <a href="#install">Install</a> ·
-  <a href="docs/self-hosting.md">Self-hosting</a> ·
-  <a href="#mobile">Mobile</a> ·
-  <a href="docs/agents-and-views.md">Agents & views</a> ·
-  <a href="docs/architecture.md">Architecture</a> ·
-  <a href="CONTRIBUTING.md">Development</a>
-</p>
+![Tailnet Agents demo: a coordinator is asked to start a SurroundFold render on a media server. It opens a terminal on that device, inspects the audio tracks, starts the render and reports back while the terminal stays visible. The Memory view then finds the run, and its source record opens.](https://github.com/r-firth/tailnet-agents/releases/download/v0.1.0-alpha.2/tailnet-agents-demo.gif)
 
-https://github.com/user-attachments/assets/92b7cb20-cc6b-4ace-a800-749be50cf64e
+<sub>Actual UI running the isolated demo with synthetic devices and data. See [docs/demo](docs/demo/README.md).</sub>
 
-<p align="center">
-  <a href="docs/demo/showreel.mp4">▶ Watch the 33-second showreel — 1080p · 60 fps · sound</a><br>
-  <a href="docs/demo/surroundfold.mp4">Watch the workflow walkthrough</a> ·
-  <a href="docs/demo/README.md">Try the walkthrough locally</a><br>
-  <sub>3D animation with actual Tailnet Agents UI and synthetic demo data. Play above with sound.</sub>
-</p>
+## What it does
 
-## What is Tailnet Agents?
+- **Coordinator chat.** Each session has a coordinator (Codex or Claude) that can
+  use your SSH devices, run commands in a visible terminal and delegate to agents.
+- **Native agent sessions.** Start Codex, Copilot or Claude directly on a chosen
+  device and project directory, using that device's existing installation and sign-in.
+- **One persistent terminal per session.** Watch the agent type, scroll back, or
+  choose **Take control** and use the shell yourself.
+- **Inspectable results.** Commands, output, exit status, diffs, sources and images
+  appear inline in the chat.
+- **Memory.** Conversations, tool calls and terminal output are recorded in Vecgra.
+  Search by text or meaning (**Cmd/Ctrl+K**), browse the graph, and open the run
+  that produced a result.
+- **Phone access.** An installable PWA with push notifications for finished work
+  and input requests.
 
-Tailnet Agents brings a built-in coordinator (Codex or Claude), your SSH devices, and persistent terminals
-into one browser workspace. Run it on a home server, open it from your laptop
-or phone, and ask it to work across your machines.
+Tailnet Agents is an early alpha.
 
-Each session has its own conversation and, when needed, one terminal. Watch the
-agent work, inspect its commands and results in the chat, or take control of
-the shell yourself. Closing a session stops its agent and terminal; closing a
-browser leaves the work running.
+## How it works
 
-Conversations, tool calls, and terminal output are recorded in Vecgra. Search
-past work by meaning or exact text, explore the memory graph, and jump from a
-result back to the session that produced it.
+The server runs on one host (for example a home server) and you open it in a
+browser. Tailscale SSH devices are discovered automatically by short name;
+terminals are tmux sessions on those devices. The coordinator runs on the host.
+Native sessions run on the selected device, reached over SSH.
 
-## Highlights
+A Rust/Axum server serves the API, streams events and owns terminal connections.
+A Python worker hosts the provider SDKs. The React/TypeScript frontend uses a
+Ghostty terminal renderer. Vecgra stores memory on the host. See
+[Architecture](docs/architecture.md).
 
-- Per-conversation Codex or Claude coordinators with native tools and workspace delegation
-- Automatic discovery of Tailscale SSH devices using their short connection names
-- One persistent, Ghostty-powered terminal per session, with scrollback while watching
-- Commands, diffs, sources, screenshots, and generated images directly in the chat
-- Qwen semantic search and an interactive Vecgra graph of your work
-- Native Codex, Copilot and Claude sessions on your devices, with coordinator delegation
-- Persistent, interactive agent-created views embedded in chat
-- A mobile PWA with push notifications for finished work and requests for input
-- Copper accents, pixel hardware, and dithered animations tied to real agent activity
+Agents run without per-tool approval prompts: Codex uses approval policy `never`
+with full access, and Claude uses `bypassPermissions`. Only register machines you
+are comfortable letting them operate.
 
-Tailnet Agents is an early alpha. Native agents use their existing device installation and sign-in; automatic installation is deferred. See [agents, custom views and notifications](docs/agents-and-views.md) for protocol requirements and usage.
+## Requirements
 
-## Install
-
-Tailnet Agents’ server runs on macOS or Linux. Remote shell hosts need SSH and tmux;
-Windows devices can expose an SSH endpoint through WSL.
-
-Install these prerequisites before running setup:
-
+- macOS or Linux for the server
 - Node.js 24+ and npm
 - Rust through rustup; the toolchain is pinned in `rust-toolchain.toml`
 - Python 3.12+ and uv
 - tmux 3.x
 - Codex CLI, authenticated with `codex login`
 
-Clone the repository, then run setup:
+Remote devices need SSH and tmux. Windows devices can expose an SSH endpoint
+through WSL.
+
+## Install and run
 
 ```sh
 git clone https://github.com/r-firth/tailnet-agents.git
@@ -81,57 +71,39 @@ npm run build
 ```
 
 Open **http://127.0.0.1:4318**. Setup installs project dependencies and the
-pinned WASM build tooling. Add `OPENROUTER_API_KEY` to `.env` for semantic
-memory: Tailnet Agents uses Qwen3-Embedding-8B through OpenRouter for both indexing and
-search queries. Without a key, exact text search and the graph remain available.
+pinned WASM build tooling.
 
-For access from other devices, follow the [self-hosting guide](docs/self-hosting.md).
-It covers private Tailscale HTTPS, authentication, SSH setup, and backups.
+- **Semantic search:** add `OPENROUTER_API_KEY` to `.env`. Indexed text and search
+  queries are sent to OpenRouter for Qwen3-Embedding-8B embeddings. Without a key,
+  text search and the graph still work. See [semantic memory](docs/self-hosting.md#semantic-memory).
+- **Other devices and phones:** follow the [self-hosting guide](docs/self-hosting.md)
+  for Tailscale HTTPS, authentication, SSH setup, running as a service, PWA
+  installation and backups.
+- **Claude:** install Claude Code 2.1.280 or later on each execution machine and
+  run `claude auth login` there with a Claude subscription. The server must run as
+  the same user with `claude` on PATH. Remote devices must permit loopback SSH
+  reverse forwarding. See [Claude sessions](docs/agents-and-views.md#claude-sessions).
 
-## See the work
+## Use
 
-Ask the coordinator to use a device, or open a terminal in the current session.
-Its actions appear inline, with expandable commands, output, exit status,
-file changes, and web sources. The coordinator runs on the Tailnet Agents host. Native Codex, Copilot and Claude sessions run on the selected device; terminals provide visible, persistent shells there.
+1. Choose **New session**, then Coordinator or a native agent, device and project.
+2. Ask for the work, for example: "Check disk usage on media-server."
+3. Follow the tool calls in the chat and the output in the session terminal.
+   **Stop agent** cancels the turn. **Close session** also ends its terminal.
+   Closing the browser leaves work running.
+4. Open **Memory** or press **Cmd/Ctrl+K** to find earlier work and its source run.
 
-Use **Take control** to type in the terminal. You can scroll back while the
-agent owns it, and the most recently focused viewer sets its dimensions.
-**Stop agent** cancels the turn; **Close session** also ends its terminal.
-Closed conversations remain searchable without restarting their shells.
-
-## Memory
-
-Press **Cmd/Ctrl+K** to search, or open **Memory** to navigate Vecgra's nodes
-and directed relationships. Switch between network and sequence arrangements,
-inspect recorded events, and open the source session from a search result.
-The graph and text index stay on the Tailnet Agents server. Embedding requests send the
-indexed text and search queries to OpenRouter; returned vectors are stored in
-Vecgra. See [embedding configuration](docs/self-hosting.md#semantic-memory).
-
-## Mobile
-
-Open your workspace’s HTTPS address on a phone connected to Tailscale, then choose
-**Install Tailnet Agents** in the sidebar. Android Chrome also offers installation from
-its browser menu; on iPhone or iPad, use **Share → Add to Home Screen**.
-
-The installed app keeps the same pixel styling, with touch controls and separate
-Chat and Terminal views. Live work requires a connection to an awake Tailnet Agents host.
-See [mobile installation](docs/self-hosting.md#mobile-installation) for details.
+More detail: [agents, custom views and notifications](docs/agents-and-views.md).
 
 ## Development
 
 ```sh
 npm run dev       # UI on :4317, API on :4318
 npm run check     # Tests, builds, and isolated integration checks
+npm run demo      # Read-only demo with synthetic data on :4325
 ```
 
-The frontend uses React, TypeScript, and Vite. Rust/Axum serves the API, streams
-events, and owns terminal connections; a Python worker hosts the provider SDKs.
-Rust/wgpu supplies the WebGPU activity instruments, with matching Canvas 2D
-rendering when WebGPU is unavailable.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for checks and fixtures, and
-[Architecture](docs/architecture.md) for persistence and runtime boundaries.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
@@ -139,66 +111,3 @@ A project-wide license has not been selected yet. Vendored Vecgra retains its
 [Apache 2.0 license](vendor/vecgra/LICENSE), and bundled Nerd Fonts retain their
 [license](web/public/fonts/NERD-FONTS-LICENSE) and
 [attribution](web/public/fonts/NERD-FONTS-README.md).
-
-## Claude sessions
-
-Choose **Coordinator → Claude** for a host-side coordinator, or **Claude** for a
-native session bound to a registered device and absolute project directory.
-Existing conversations retain Codex as their coordinator backend. Role and provider
-are separate: a Claude coordinator can delegate to any supported provider; native
-sessions cannot delegate, regardless of provider. Follow-ups resume the saved
-Claude session ID on its original device and project.
-
-Install the official Claude Code CLI yourself on every execution machine and run
-`claude auth login` there using your Claude subscription. For manual code entry
-over SSH on CLI versions before 2.1.126, use `claude /login` and select the Claude
-subscription option. The hub service must run
-as that same OS user with `claude` on PATH. Discovery reports installation, not
-successful authentication. No credentials are copied from your workstation to a
-remote machine. The adapter checks the CLI's authentication status, requires
-`claude.ai`, clears API/alternate-provider authentication environment variables,
-and uses a per-process `forceLoginMethod: claudeai` setting. It never invokes
-`--bare`, chooses an API fallback, or uses the SDK-bundled CLI.
-Account-side limits and billing settings remain controlled by Anthropic.
-
-`HUB_MODEL` remains Codex-only. Claude defaults to `claude-opus-5-5` (Opus 5.5)
-with explicit `medium` effort for both coordinator and native sessions. Optional
-`HUB_CLAUDE_MODEL` overrides the model. Opus 5.5 requires Claude Code 2.1.280 or
-later on every execution device; the app does not upgrade installed CLIs. No machine-wide settings
-are written. User/project Claude settings, skills and tools are loaded normally.
-Claude runs with `bypassPermissions`; Codex runs with approval policy `never` and
-`danger-full-access`. These settings apply to new and resumed coordinator/native
-sessions, locally and over SSH. Tool execution does not require approval.
-`AskUserQuestion` clarification requests still appear in the conversation. The stop button interrupts Claude before the
-worker process group is terminated as a cleanup fallback.
-
-Remote execution uses the pinned official Python Agent SDK on the hub, with its
-stdio transport carried over SSH to the unmodified `claude` CLI on the selected
-machine. Remote Python/SDK installation is unnecessary. An SSH reverse forward
-provides the existing conversation-scoped workspace MCP endpoint, so the remote
-SSH server must permit loopback reverse forwarding. Tailscale reauthentication is
-shown in chat before launch. This uses registered-device SSH, not Anthropic's
-separate Remote Control or cloud session services. The SDK transport adapter uses
-a pinned internal command builder; upgrade it together with its protocol tests.
-
-After updating project dependencies (`uv sync --project agent --group dev`), run
-`npm run check`. An optional live check uses subscription capacity:
-
-```sh
-agent/.venv/bin/python scripts/claude-smoke.py
-```
-
-It checks structured coordinator output, native streaming and session resume in a
-temporary project without restarting the running service. Remote protocol tests
-use a simulated SSH executable; a real remote smoke check additionally requires a
-registered machine with a working subscription sign-in and SSH forwarding.
-
-Implementation references (verified September 26, 2026):
-[Agent SDK Python interface](https://code.claude.com/docs/en/agent-sdk/python),
-[CLI flags](https://code.claude.com/docs/en/cli-reference),
-[streaming](https://code.claude.com/docs/en/agent-sdk/streaming-output),
-[sessions and resume](https://code.claude.com/docs/en/agent-sdk/sessions),
-[permissions and user input](https://code.claude.com/docs/en/agent-sdk/user-input),
-and [subscription authentication and usage](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan).
-The subscription article's June 15 update pauses the proposed SDK billing changes;
-its older proposal remains below the update for reference.
