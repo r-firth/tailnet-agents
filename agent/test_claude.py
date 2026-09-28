@@ -527,10 +527,15 @@ class ClaudeTests(unittest.TestCase):
             {"loggedIn": False},
             {"loggedIn": True, "authMethod": "api_key", "apiKey": "secret"},
         ):
-            with patch.object(
-                subprocess,
-                "run",
-                return_value=subprocess.CompletedProcess([], 0, json.dumps(status), ""),
+            with (
+                patch.object(claude, "cli_path", return_value="/fixture/claude"),
+                patch.object(
+                    subprocess,
+                    "run",
+                    return_value=subprocess.CompletedProcess(
+                        [], 0, json.dumps(status), ""
+                    ),
+                ),
             ):
                 with self.assertRaisesRegex(
                     RuntimeError, "subscription sign-in"
