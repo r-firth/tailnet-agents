@@ -69,6 +69,12 @@ impl Coordinator {
             hub.emit(json!({"type": "typing", "on": false}));
             let reply = match result {
                 Ok(text) => text,
+                Err(e) if setup_problem(&format!("{e:#}")).is_some() => {
+                    let msg = setup_problem(&format!("{e:#}")).unwrap();
+                    tracing::error!("coordinator unavailable: {msg}");
+                    // Say exactly what to fix instead of answering with built-in rules.
+                    format!("I can't think properly right now: {msg} Then send that again.")
+                }
                 Err(e) => {
                     tracing::warn!("coordinator failed: {e:#}");
                     // Keep working without the model rather than dropping the message.
@@ -156,7 +162,8 @@ fn system_prompt(hub: &Arc<Hub>, memory: &[Value]) -> String {
     let mem: Vec<String> = memory.iter().map(|c| format!("[{}] {} ({}, {}, conf {:.2}{})", c["id"], c["text"].as_str().unwrap_or(""), c["kind"].as_str().unwrap_or(""), c["source"]["label"].as_str().unwrap_or(""), c["confidence"].as_f64().unwrap_or(0.0), if c["state"] == "superseded" { ", SUPERSEDED" } else { "" })).collect();
     let settings = hub.state.lock().unwrap().settings.clone();
     format!(
-        "You are Familiar, Ryan's personal agent. You talk to him on Telegram and the web. You remember everything in one Vecgra graph and do hands-on work (browser, desktop, terminal, installs, coding) by starting tasks on his persistent cloud computer, where Claude Code or Codex does the work while he can watch live.\n\n\
+        "You are Familiar, Ryan's personal agent. You talk to him on Telegram and the web. You remember everything in one Vecgra graph and do hands-on work (browser, desktop, terminal, installs, coding) by starting tasks on his machines, where Claude Code or Codex does the work while he can watch live.\n\n\
+{machines}\n\n\
 Style: short, direct, friendly, British English, no filler. Lead with the answer.\n\n\
 Rules:\n\
 - If you can answer from memory or general knowledge, just answer. Don't start a task for questions.\n\
@@ -167,12 +174,57 @@ Rules:\n\
 - Spending is allowed; payments over {threshold} need his approval, which the task asks for itself.\n\
 - \"stop everything\" → call kill.\n\n\
 Now: {now}\n\nRecent tasks:\n{tasks}\n\nOpen questions for Ryan:\n{needs}\n\nRelevant memory (id, text, kind, source):\n{mem}",
+        machines = machines_blurb(hub),
         default = settings.default_executor,
         threshold = gbp(settings.approval_threshold_p),
         now = chrono::Utc::now().format("%A %d %B %Y %H:%M UTC"),
         tasks = if tasks.is_empty() { "none".into() } else { tasks.join("\n") },
         needs = if needs.is_empty() { "none".into() } else { needs.join("\n") },
         mem = if mem.is_empty() { "nothing relevant yet".into() } else { mem.join("\n") },
+    )
+}
+
+/// A Claude Code problem only Ryan can fix (too old, signed out), as one actionable sentence.
+fn setup_problem(err: &str) -> Option<String> {
+    let lower = err.to_lowercase();
+    if let Some(i) = lower.find("does not support this model") {
+        let version = err[..i].rsplit("Claude Code ").next().unwrap_or("").trim();
+        let needed = err.split("version ").nth(1).and_then(|s| s.split_whitespace().next()).unwrap_or("a newer version");
+        return Some(format!("Claude Code {version} on this computer is too old for the configured model (needs {needed}+). Run `claude update`, or set FAMILIAR_CLAUDE_MODEL to an older model."));
+    }
+    if ["not logged in", "please run /login", "oauth session expired", "oauth token has expired", "authentication_failed"].iter().any(|p| lower.contains(p)) {
+        return Some("Claude Code isn't signed in on this computer. Run `claude auth login`.".into());
+    }
+    None
+}
+
+/// What the machines actually are, so Familiar never claims a cloud computer it doesn't have.
+fn machines_blurb(hub: &Arc<Hub>) -> String {
+    let l = &hub.launcher;
+    let os = match std::env::consts::OS {
+        "macos" => "Mac",
+        "linux" => "Linux box",
+        other => other,
+    };
+    let what = match l.backend() {
+        "local" => format!("a local process with headless Chrome on the same {os} Familiar runs on (Ryan's own computer, not a cloud VM); no full desktop"),
+        "docker" => format!("a Docker container with a full desktop on the same {os} Familiar runs on (not a cloud VM)"),
+        "ssh" => "Ryan's own box over Tailscale (SSH), not a cloud VM".into(),
+        "cloudflare" => "a Cloudflare Sandbox container in the cloud; its home is backed up to R2".into(),
+        "manual" => "an agentd Ryan connects himself".into(),
+        other => format!("the {other} backend"),
+    };
+    let connected: Vec<String> = hub.state.lock().unwrap().machines.values().filter(|m| m.status != "offline").map(|m| format!("{} ({})", m.name, m.status)).collect();
+    format!(
+        "Machines (describe them exactly like this; never call them cloud computers unless the backend is cloudflare):\n\
+- Tasks run on Ryan's personal machine \"{name}\", backend {backend}: {what}. Its home, installs and Chrome logins persist.\n\
+- When it's busy, Familiar forks up to {forks} extra copies on the same backend. A fork's changes are thrown away, so installs and logins wait for the personal machine.\n\
+- Right now: {connected}.\n\
+- Other backends Familiar supports: local, docker (full desktop in a container here), ssh (his own box over Tailscale) and cloudflare (cloud sandboxes; needs his Cloudflare account and the Worker in cloudflare/ deployed). Switching is FAMILIAR_MACHINE_BACKEND in .env plus a restart, which Ryan does; you can't spin up other kinds of machine yourself. If he asks about cloud machines, say what's configured now and what switching would take.",
+        name = l.personal_name(),
+        backend = l.backend(),
+        forks = l.max_machines().saturating_sub(1),
+        connected = if connected.is_empty() { "no machine connected yet (one starts with the first task)".into() } else { connected.join(", ") },
     )
 }
 

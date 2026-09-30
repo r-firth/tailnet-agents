@@ -17,6 +17,7 @@ const HIDDEN_TOOLS = new Set(["ToolSearch", "ListMcpResourcesTool", "ReadMcpReso
 
 const AUTH_RE = /authentication_failed|invalid api key|please run \/login|not logged in|oauth token has expired|401|unauthori[sz]ed|no credentials|credit balance is too low/i;
 const AUTH_MSG = "Claude Code isn't signed in on this machine. Run `claude auth login` there (or set ANTHROPIC_API_KEY), then retry.";
+const VERSION_RE = /(Claude Code [\d.]+) does not support this model; version ([\d.]+) or newer is required/i;
 
 /** Map a Claude Code built-in tool call to a timeline tool name + target. */
 export function describeClaudeTool(name: string, input: any): { tool: string; target: string; actor: string } {
@@ -147,6 +148,8 @@ export class ClaudeStream {
   failureMessage(stderr: string, code: number | null): string {
     const blob = [...this.errors, this.final?.text ?? "", stderr].join("\n");
     if (AUTH_RE.test(blob)) return AUTH_MSG;
+    const old = VERSION_RE.exec(blob);
+    if (old) return `${old[1]} on this machine is too old for the configured model (needs ${old[2]}+). Run \`claude update\` there, then retry.`;
     if (this.final && !this.final.ok) {
       if (this.final.subtype === "error_max_turns") return "Claude Code hit its turn limit before finishing.";
       return `Claude Code stopped: ${oneLine(this.final.text || this.final.subtype, 300)}`;

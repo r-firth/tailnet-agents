@@ -71,7 +71,7 @@ export function buildPrompt(h: Host, t: TaskRun, includeGuidance: boolean): stri
   const skills = localSkills(h.cfg.home).slice(0, 6);
   if (skills.length) parts.push(`# Skills saved on this machine\n${skills.map((s) => `## ${s.name}\n${truncate(s.body, 1500)}`).join("\n\n")}`);
   parts.push(
-    `# Environment\n- Machine "${h.cfg.name}" (${h.cfg.backend}); home directory ${h.cfg.home}; installs go in ~/opt/<name>/ with a VERSION file.\n` +
+    `# Environment\n- Machine "${h.cfg.name}" (${h.cfg.backend}${h.cfg.backend === "local" ? `: a process on ${h.cfg.ownerName}'s own computer, not a cloud VM` : ""}); home directory ${h.cfg.home}; installs go in ~/opt/<name>/ with a VERSION file.\n` +
       `- Chrome has a persistent profile, so sites the user logged into stay logged in.\n` +
       `- ${h.cfg.ownerName} can watch the browser and terminal live and may take control; tool calls pause until control is handed back.\n` +
       `- A fictional demo SaaS called Polyform runs at ${h.demo.origin} (used for demos).\n` +

@@ -65,6 +65,18 @@ impl Launcher {
         v
     }
 
+    pub fn backend(&self) -> &str {
+        &self.inner.backend
+    }
+
+    pub fn personal_name(&self) -> &str {
+        &self.inner.personal
+    }
+
+    pub fn max_machines(&self) -> usize {
+        self.inner.max_machines
+    }
+
     pub fn personal_id(&self) -> String {
         format!("m_{}", self.inner.personal)
     }

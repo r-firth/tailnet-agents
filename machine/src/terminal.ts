@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
@@ -37,6 +38,40 @@ bind 'set enable-active-region off' 2>/dev/null
 `;
 
 /**
+ * The newest bash we can find. macOS ships bash 3.2, which has no PS0 and no bracketed paste,
+ * so a Homebrew bash is preferred and 3.2 gets a compatible mode (see runLocked).
+ */
+function findBash(): { bin: string; modern: boolean } {
+  const candidates = [process.env.FAMILIAR_BASH, "/opt/homebrew/bin/bash", "/usr/local/bin/bash", "bash"].filter((c): c is string => !!c);
+  let fallback: { bin: string; modern: boolean } | null = null;
+  for (const bin of candidates) {
+    if (bin.includes("/") && !fs.existsSync(bin)) continue;
+    try {
+      const [maj, min] = execFileSync(bin, ["-c", 'echo "${BASH_VERSINFO[0]} ${BASH_VERSINFO[1]}"'], { encoding: "utf8" }).trim().split(" ").map(Number);
+      const modern = maj > 4 || (maj === 4 && min >= 4);
+      if (modern) return { bin, modern };
+      fallback ??= { bin, modern };
+    } catch {
+      /* not runnable */
+    }
+  }
+  return fallback ?? { bin: "bash", modern: true };
+}
+
+/** npm installs node-pty's macOS spawn-helper without its exec bit, which makes every spawn fail with posix_spawnp. */
+function fixSpawnHelper() {
+  try {
+    const dir = path.dirname(createRequire(import.meta.url).resolve("node-pty/package.json"));
+    for (const sub of ["prebuilds/darwin-arm64", "prebuilds/darwin-x64", "build/Release"]) {
+      const helper = path.join(dir, sub, "spawn-helper");
+      if (fs.existsSync(helper) && !(fs.statSync(helper).mode & 0o111)) fs.chmodSync(helper, 0o755);
+    }
+  } catch {
+    /* node-pty not installed */
+  }
+}
+
+/**
  * One visible bash shell per machine. Everything the agent runs is typed into it, so the viewer sees it.
  * Completion is detected with invisible OSC markers emitted from PS0 (command start) and PROMPT_COMMAND (exit code).
  */
@@ -50,6 +85,9 @@ export class Terminal extends EventEmitter {
   private stopped = false;
   cols = 120;
   rows = 32;
+  private bash = findBash();
+  private startedAt = 0;
+  private quickExits = 0;
 
   constructor(
     private home: string,
@@ -58,7 +96,16 @@ export class Terminal extends EventEmitter {
     super();
   }
 
-  async start(): Promise<void> {
+  private starting: Promise<void> | null = null;
+
+  /** Start the shell, or wait for the one already starting. Never spawns a second shell over a live one. */
+  start(): Promise<void> {
+    if (this.pty) return this.readyPromise ?? Promise.resolve();
+    this.starting ??= this.spawnShell().finally(() => (this.starting = null));
+    return this.starting;
+  }
+
+  private async spawnShell(): Promise<void> {
     const rc = path.join(this.home, ".familiar", "bashrc");
     fs.mkdirSync(path.dirname(rc), { recursive: true });
     fs.writeFileSync(rc, RCFILE);
@@ -75,6 +122,8 @@ export class Terminal extends EventEmitter {
       LANG: env.LANG || "C.UTF-8",
     });
     const args = ["--rcfile", rc, "-i"];
+    if (!this.bash.modern) log("warn", `${this.bash.bin} is older than 4.4; using compatible terminal mode (install a newer bash, e.g. brew install bash, for a nicer terminal)`);
+    this.startedAt = Date.now();
     this.pty = (await this.spawnNodePty(args, env)) ?? this.spawnFallback(args, env);
     this.pty.onData((d) => this.onData(d));
     this.pty.onExit((code) => {
@@ -82,7 +131,10 @@ export class Terminal extends EventEmitter {
       log("warn", `terminal shell exited (${code}); restarting`);
       this.pty = null;
       this.readyPromise = null;
-      setTimeout(() => this.start().catch((e) => log("error", "terminal restart failed", e)), 1000);
+      // Back off when the shell dies straight away, so a broken setup doesn't spin.
+      this.quickExits = Date.now() - this.startedAt < 5000 ? this.quickExits + 1 : 0;
+      const delay = Math.min(1000 * 2 ** this.quickExits, 60_000);
+      setTimeout(() => this.stopped || this.start().catch((e) => log("error", "terminal restart failed", e)), delay);
     });
     this.readyPromise = new Promise<void>((resolve) => {
       const t = setTimeout(() => {
@@ -105,9 +157,10 @@ export class Terminal extends EventEmitter {
   private async spawnNodePty(args: string[], env: Record<string, string>): Promise<PtyLike | null> {
     if (process.env.FAMILIAR_NO_NODE_PTY) return null;
     try {
+      fixSpawnHelper();
       const mod: any = await import("node-pty");
       const ptyMod = mod.default ?? mod;
-      const p = ptyMod.spawn("bash", args, { name: "xterm-256color", cols: this.cols, rows: this.rows, cwd: this.home, env });
+      const p = ptyMod.spawn(this.bash.bin, args, { name: "xterm-256color", cols: this.cols, rows: this.rows, cwd: this.home, env });
       this.mode = "node-pty";
       return {
         pid: p.pid,
@@ -124,15 +177,17 @@ export class Terminal extends EventEmitter {
   }
 
   private spawnFallback(args: string[], env: Record<string, string>): PtyLike {
-    const shellCmd = ["bash", ...args].map((a) => `'${a.replace(/'/g, `'\\''`)}'`).join(" ");
+    const shellCmd = [this.bash.bin, ...args].map((a) => `'${a.replace(/'/g, `'\\''`)}'`).join(" ");
     let child: ChildProcess;
-    const hasScript = fs.existsSync("/usr/bin/script") || fs.existsSync("/bin/script");
+    // macOS's BSD script can't run with a socket for stdin (node's pipes), so there we go straight to python's pty.
+    const hasScript = process.platform !== "darwin" && (fs.existsSync("/usr/bin/script") || fs.existsSync("/bin/script"));
     const sizeEnv = { ...env, COLUMNS: String(this.cols), LINES: String(this.rows) };
+    const inner = `stty cols ${this.cols} rows ${this.rows} 2>/dev/null; exec ${shellCmd}`;
     if (hasScript) {
-      child = spawn("script", ["-qfc", `stty cols ${this.cols} rows ${this.rows} 2>/dev/null; exec ${shellCmd}`, "/dev/null"], { cwd: this.home, env: sizeEnv, stdio: "pipe" });
+      child = spawn("script", ["-qfc", inner, "/dev/null"], { cwd: this.home, env: sizeEnv, stdio: "pipe" });
       this.mode = "script";
     } else {
-      const py = `import pty,sys\nsys.exit(pty.spawn(${JSON.stringify(["bash", ...args])}) >> 8)`;
+      const py = `import pty,sys\nsys.exit(pty.spawn(${JSON.stringify([this.bash.bin, ...args])}) >> 8)`;
       child = spawn("python3", ["-c", py], { cwd: this.home, env: sizeEnv, stdio: "pipe" });
       this.mode = "python-pty";
     }
@@ -242,7 +297,9 @@ export class Terminal extends EventEmitter {
       this.on("raw", onRaw);
       // Clear any half-typed line, then paste the command (bracketed paste keeps tabs/newlines literal) and run it.
       this.write("\x05\x15");
-      this.write(`\x1b[200~${text}\x1b[201~\r`);
+      if (this.bash.modern) this.write(`\x1b[200~${text}\x1b[201~\r`);
+      // bash < 4.4 has neither PS0 nor bracketed paste: print the start marker ourselves and type the command.
+      else this.write(`printf '\\e]777;fam;start\\a'; ${text}\r`);
     });
   }
 
