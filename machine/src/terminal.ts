@@ -32,6 +32,8 @@ PS0='\\e]777;fam;start\\a'
 __fam_prompt() { local s=$?; printf '\\e]777;fam;exit;%s\\a' "$s"; return $s; }
 PROMPT_COMMAND=__fam_prompt
 HISTFILE="$HOME/.familiar/bash_history"
+bind 'set bell-style none' 2>/dev/null
+bind 'set enable-active-region off' 2>/dev/null
 `;
 
 /**
@@ -101,6 +103,7 @@ export class Terminal extends EventEmitter {
   }
 
   private async spawnNodePty(args: string[], env: Record<string, string>): Promise<PtyLike | null> {
+    if (process.env.FAMILIAR_NO_NODE_PTY) return null;
     try {
       const mod: any = await import("node-pty");
       const ptyMod = mod.default ?? mod;

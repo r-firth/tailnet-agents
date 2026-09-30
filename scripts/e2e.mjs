@@ -41,7 +41,9 @@ const tgServer = http.createServer((req, res) => {
         const offset = json.offset || 0;
         const deadline = Date.now() + 1000;
         while (!tg.updates.some((u) => u.update_id >= offset) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
-        return ok(tg.updates.filter((u) => u.update_id >= offset));
+        // Like Telegram: asking with an offset confirms (drops) everything before it.
+        tg.updates = tg.updates.filter((u) => u.update_id >= offset);
+        return ok(tg.updates);
       }
       case 'sendMessage': { const m = { message_id: tg.nextId++, chat: { id: json.chat_id }, text: json.text, reply_markup: json.reply_markup }; tg.sent.push(m); return ok(m); }
       case 'editMessageText': tg.edits.push(json); return ok(true);

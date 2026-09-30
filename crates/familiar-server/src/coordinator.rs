@@ -80,7 +80,9 @@ impl Coordinator {
             };
             if !reply.trim().is_empty() {
                 let channel = inbound.message.channel.clone();
-                hub.add_message("assistant", reply.trim(), &channel, None, None).ok();
+                // Link the reply to the run it started, if any.
+                let started = hub.state.lock().unwrap().tasks.values().filter(|t| t.message_id.as_deref() == Some(inbound.message.id.as_str())).max_by_key(|t| t.num).map(|t| t.id.clone());
+                hub.add_message("assistant", reply.trim(), &channel, started, None).ok();
                 if channel == "telegram" {
                     hub.tg.send(crate::hub::TgCmd::Say(reply.trim().to_owned())).ok();
                 }
@@ -331,13 +333,8 @@ pub async fn mock_turn(hub: &Arc<Hub>, inbound: &Inbound) -> Result<String> {
     if looks_like_task {
         let executor = if lower.contains("use codex") || lower.contains("with codex") { Some("codex") } else if lower.contains("use claude") || lower.contains("with claude") { Some("claude") } else { inbound.executor.as_deref() };
         let memory = hub.context_packet_async(text, 5).await;
-        let mut brief = text.to_owned();
-        let facts: Vec<String> = memory.iter().filter(|c| c["state"] == "active").map(|c| format!("- {}", c["text"].as_str().unwrap_or(""))).collect();
-        if !facts.is_empty() {
-            brief.push_str("\n\nWhat I remember that may help:\n");
-            brief.push_str(&facts.join("\n"));
-        }
-        let t = hub.create_task(&brief, Some(&crate::hub::title_from(text)), executor, &inbound.message.channel, Some(inbound.message.id.clone()))?;
+        // Memory travels to the machine in task.start's context, not in the brief.
+        let t = hub.create_task(text, Some(&crate::hub::title_from(text)), executor, &inbound.message.channel, Some(inbound.message.id.clone()))?;
         hub.add_event(&t.id, "memory", "memory.recall", obj(json!({"query": text, "hits": memory.iter().map(|c| json!({"id": c["id"], "score": c["score"], "text": c["text"], "kind": c["kind"], "source": c["source"]["label"]})).collect::<Vec<_>>() }))).ok();
         let exec = match t.executor.as_str() {
             "claude" => "Claude Code",

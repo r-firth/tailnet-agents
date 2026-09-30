@@ -198,19 +198,29 @@ impl Launcher {
             run("docker", &["run", "--rm", "-v", &format!("{src}:/from"), "-v", &format!("{volume}:/to"), "alpine", "sh", "-c", "cp -a /from/. /to/ && rm -f /to/.config/familiar-chrome/Singleton*"]).await?;
         }
         run("docker", &["rm", "-f", &format!("familiar-{name}")]).await.ok();
-        let server = self.inner.server_ws.replace("127.0.0.1", "host.docker.internal").replace("localhost", "host.docker.internal");
-        let mut args = vec![
-            "run".to_owned(), "-d".into(), "--name".into(), format!("familiar-{name}"),
-            "--add-host".into(), "host.docker.internal:host-gateway".into(),
-            "--shm-size".into(), "1g".into(),
+        // Each machine gets its own noVNC port (personal 6080, forks 6081…).
+        let slot: u16 = id.rsplit_once("-fork").and_then(|(_, n)| n.parse().ok()).unwrap_or(0);
+        let novnc = 6080 + slot;
+        let desktop = format!("http://localhost:{novnc}/vnc.html?autoconnect=1&resize=scale");
+        let mut args = vec!["run".to_owned(), "-d".into(), "--name".into(), format!("familiar-{name}"), "--shm-size".into(), "1g".into()];
+        let server = if cfg!(target_os = "linux") {
+            // Host networking reaches a loopback-only server; displays and VNC ports are per machine.
+            args.extend(["--network".into(), "host".into(), "-e".into(), format!("DISPLAY=:{}", 99 + slot), "-e".into(), format!("FAMILIAR_RFB_PORT={}", 5900 + slot), "-e".into(), format!("FAMILIAR_NOVNC_PORT={novnc}")]);
+            self.inner.server_ws.clone()
+        } else {
+            // Docker Desktop forwards host.docker.internal to the host's loopback.
+            args.extend(["-p".into(), format!("127.0.0.1:{novnc}:6080"), "--add-host".into(), "host.docker.internal:host-gateway".into()]);
+            self.inner.server_ws.replace("127.0.0.1", "host.docker.internal").replace("localhost", "host.docker.internal")
+        };
+        args.extend([
+            "-e".into(), format!("FAMILIAR_DESKTOP_URL={desktop}"),
             "-v".into(), format!("{volume}:/home/agent"),
             "-e".into(), format!("FAMILIAR_SERVER={server}"),
             "-e".into(), format!("FAMILIAR_MACHINE_TOKEN={}", self.inner.machine_token),
             "-e".into(), format!("FAMILIAR_MACHINE_ID={id}"),
             "-e".into(), format!("FAMILIAR_MACHINE_NAME={name}"),
             "-e".into(), "FAMILIAR_BACKEND=docker".into(),
-            "-P".into(),
-        ];
+        ]);
         for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"] {
             if std::env::var(key).is_ok() {
                 args.push("-e".into());

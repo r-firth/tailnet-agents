@@ -120,6 +120,7 @@ impl Hub {
                 no_ask_merchants: vec![],
                 telegram_chat_id: None,
                 time_cap_s: 3600,
+                telegram_offset: 0,
             },
             schedules: BTreeMap::new(),
             artifacts: HashMap::new(),
@@ -1394,6 +1395,9 @@ impl Hub {
         }
         if let Some(v) = patch["time_cap_s"].as_u64() {
             st.settings.time_cap_s = v.clamp(60, 24 * 3600);
+        }
+        if let Some(v) = patch["telegram_offset"].as_i64() {
+            st.settings.telegram_offset = v;
         }
         if patch.get("telegram_chat_id").is_some() {
             st.settings.telegram_chat_id = patch["telegram_chat_id"].as_i64();

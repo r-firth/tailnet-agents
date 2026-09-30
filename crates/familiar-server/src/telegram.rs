@@ -180,7 +180,8 @@ async fn sync_task(hub: &Arc<Hub>, tg: &Telegram, id: &str, last: &mut HashMap<S
 }
 
 async fn poll(hub: Arc<Hub>, tg: Telegram) {
-    let mut offset: i64 = 0;
+    // Persisted so a restart never replays handled messages.
+    let mut offset: i64 = hub.state.lock().unwrap().settings.telegram_offset;
     loop {
         let updates = match tg.call("getUpdates", json!({"offset": offset, "timeout": 25, "allowed_updates": ["message", "callback_query"]})).await {
             Ok(u) => u,
@@ -192,6 +193,7 @@ async fn poll(hub: Arc<Hub>, tg: Telegram) {
         };
         for u in updates.as_array().cloned().unwrap_or_default() {
             offset = offset.max(u["update_id"].as_i64().unwrap_or(0) + 1);
+            hub.update_settings(&json!({"telegram_offset": offset})).ok();
             if let Err(e) = handle_update(&hub, &tg, &u).await {
                 tracing::warn!("telegram update: {e:#}");
             }

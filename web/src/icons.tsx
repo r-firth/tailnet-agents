@@ -24,7 +24,7 @@ export const IPlus = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><pa
 export const ISend = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><path d="M2.5 8L13.5 2.5 10 13.5 7.5 9z" /><path d="M7.5 9l6-6.5" /></svg>;
 export const ITelegram = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}><path d="M14 2.5L1.8 7.3l4.2 1.4 1.5 4.6 2.2-2.9 3 2.2z" /><path d="M6 8.7l7.9-6.2" /></svg>;
 export const IHand = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><path d="M5 8V3.5a1 1 0 0 1 2 0V7M7 7V2.5a1 1 0 0 1 2 0V7M9 7V3.5a1 1 0 0 1 2 0V8.5M11 6.5a1 1 0 0 1 2 0V10a4.5 4.5 0 0 1-4.5 4.5h-.8A4.2 4.2 0 0 1 4.3 13L2.6 10.3a1 1 0 0 1 1.6-1.2L5 10" /></svg>;
-export const IStop = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" /></svg>;
+export const IStop = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none" /></svg>;
 export const IExpand = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5L9 7M2.5 13.5L7 9" /></svg>;
 export const IShrink = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5L14 2M6.5 9.5L2 14" /></svg>;
 export const IClock = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg>;

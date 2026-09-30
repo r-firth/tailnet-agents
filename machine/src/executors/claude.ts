@@ -12,6 +12,9 @@ const EXTRA_DIRS = ["/opt/node22/bin", path.join(os.homedir(), ".local/bin"), pa
 
 const ROOT_ALLOWED = ["mcp__familiar", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"];
 
+/** Claude Code plumbing that means nothing to the user. */
+const HIDDEN_TOOLS = new Set(["ToolSearch", "ListMcpResourcesTool", "ReadMcpResourceTool"]);
+
 const AUTH_RE = /authentication_failed|invalid api key|please run \/login|not logged in|oauth token has expired|401|unauthori[sz]ed|no credentials|credit balance is too low/i;
 const AUTH_MSG = "Claude Code isn't signed in on this machine. Run `claude auth login` there (or set ANTHROPIC_API_KEY), then retry.";
 
@@ -98,7 +101,7 @@ export class ClaudeStream {
             if (o.error) this.errors.push(b.text);
             else h.event(t, { kind: "message", actor: "agent", text: truncate(b.text.trim(), 2000) });
           } else if (b.type === "tool_use") {
-            if (String(b.name).startsWith("mcp__familiar__")) continue; // recorded by agentd itself
+            if (String(b.name).startsWith("mcp__familiar__") || HIDDEN_TOOLS.has(b.name)) continue; // recorded by agentd itself / plumbing
             const d = describeClaudeTool(b.name, b.input);
             this.pending.set(b.id, { ...d, at: Date.now() });
             h.event(t, { kind: "tool", actor: d.actor, tool: d.tool, target: truncate(d.target, 200), status: "pending", call_id: b.id });

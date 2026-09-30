@@ -1,6 +1,6 @@
 import type { Machine, NeedsYou, Settings, Task, TaskEvent } from '../types';
 import { stepAt, stepTextAt, type StepRow } from '../timeline';
-import { dur, gbp, timeOf, tokens as ftok } from '../format';
+import { dur, gbp, timeOf, tokens as ftok, uptime } from '../format';
 import { Bar, Spark } from './ui';
 import { openOverlay, machineName, type Hist } from '../store';
 
@@ -77,7 +77,7 @@ export function MachinePanel({ m, hist, task }: { m: Machine | undefined; hist: 
         {kv('CPU', on ? `${m.stats.cpu_pct}%` : '—', <Spark data={hist?.cpu.slice(-40) || []} color={col} max={100} />)}
         {kv('MEM', <>{on ? m.stats.mem_gb.toFixed(1) : '—'} <i>/ {m.specs.mem_gb} GB</i></>, <Bar pct={(m.stats.mem_gb / m.specs.mem_gb) * 100} />)}
         {kv('NET', <>{on ? m.stats.net_mbs.toFixed(1) : '—'} <i>MB/s</i></>, <Spark data={hist?.net.slice(-40) || []} color="var(--mach)" />)}
-        {kv('Status', <span style={{ fontFamily: 'var(--sans)' }}>{m.status}</span>, <Bar pct={on ? 100 : 0} color={on ? 'var(--ok)' : 'var(--muted)'} />)}
+        {kv('Uptime', on ? uptime(m.stats.uptime_s) : m.status, <Bar pct={on ? 100 : 0} color={on ? 'var(--ok)' : 'var(--muted)'} />)}
       </div>
     </div>
   );

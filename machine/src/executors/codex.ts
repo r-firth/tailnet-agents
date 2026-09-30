@@ -18,7 +18,10 @@ export class CodexStream {
   private pending = new Map<string, { tool: string; target: string; actor: string; at: number }>();
   tokens = 0;
   lastMessage = "";
+  /** turn.failed: the run failed. */
   error: string | null = null;
+  /** last transient `error` event (e.g. "Reconnecting... 2/5"), used only to explain a non-zero exit */
+  lastError: string | null = null;
   completed = false;
 
   constructor(
@@ -100,7 +103,7 @@ export class CodexStream {
         this.error = String(o.error?.message ?? "turn failed");
         return;
       case "error":
-        this.error = String(o.message ?? "error");
+        this.lastError = String(o.message ?? "error");
         return;
     }
   }
@@ -179,8 +182,8 @@ export async function runCodex(h: Host, t: TaskRun): Promise<void> {
     await callTool(h, t, "finish", { outcome: stream.completed ? "success" : "partial", summary: truncate(stream.lastMessage || "Done.", 1200) });
     return;
   }
-  const blob = `${stream.error ?? ""}\n${res.stderr}`;
+  const blob = `${stream.error ?? ""}\n${stream.lastError ?? ""}\n${res.stderr}`;
   if (AUTH_RE.test(blob)) throw new ExecutorError(AUTH_MSG);
-  const tail = oneLine(stream.error ?? res.stderr.split("\n").filter((l) => l.trim()).slice(-3).join(" "), 300);
+  const tail = oneLine(stream.error ?? stream.lastError ?? res.stderr.split("\n").filter((l) => l.trim()).slice(-3).join(" "), 300);
   throw new ExecutorError(`Codex exited with code ${res.code}${tail ? `: ${tail}` : ""}`);
 }

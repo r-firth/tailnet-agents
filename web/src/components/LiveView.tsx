@@ -28,6 +28,7 @@ interface Props {
   goLive: () => void;
   wide: boolean;
   setWide: (w: boolean) => void;
+  frameSize?: string;
 }
 
 const ended = (t: Task) => t.status === 'done' || t.status === 'failed' || t.status === 'cancelled';
@@ -160,6 +161,7 @@ export function LiveView(p: Props) {
   useEffect(() => { if (tab === 'terminal') setTermAct(false); }, [tab]);
   const [editUrl, setEditUrl] = useState<string | null>(null);
   const u = splitUrl(p.url);
+  const fsz = getFrame(task.id);
   const isEnded = ended(task);
   const fallback = artifactUrl(isEnded ? task.receipt_artifact || task.last_frame_artifact : task.last_frame_artifact) || null;
 
@@ -181,7 +183,6 @@ export function LiveView(p: Props) {
       inner = fallback ? (
         <>
           <img className="frame" src={fallback} alt="Final screenshot" draggable={false} />
-          <span className={`receipt-tag ${task.outcome === 'partial' ? 'partial' : task.status !== 'done' || task.outcome === 'failed' ? 'bad' : ''}`}><IReceipt />{task.status === 'done' ? (task.outcome === 'partial' ? 'Partial · proof' : 'Receipt') : task.status === 'cancelled' ? 'Cancelled · last frame' : 'Failed · last frame'}</span>
         </>
       ) : <MomentCard m={p.replayMoment} task={task} machine={machine} />;
     } else {
@@ -190,22 +191,11 @@ export function LiveView(p: Props) {
     view = (
       <div className={`vp fill ${driving && live ? 'drive' : ''}`}>
         {inner}
-        {!driving && tab === 'browser' && p.curRow && !isEnded && (
-          <span className="vp-act"><span className={`k ${actorClass(p.curRow.actor)}`} /><b>{p.curRow.tool}</b> {p.curRow.target}{p.curRow.pending ? <span className="pend"> · {live ? 'running' : 'running at this point'}</span> : p.curRow.result ? ` → ${p.curRow.result}` : ''}</span>
-        )}
-        {driving && live && (
-          <div className="drive-bar">
-            <b>You're driving {machineName(task.machine_id)}</b>
-            <span className="s">{execName(task.executor)} paused at step {task.step} · click the page, then type · Esc stops typing</span>
-            <span className="sp" />
-            <button onClick={() => setControl(task, false)}>Hand back <kbd>T</kbd></button>
-          </div>
-        )}
       </div>
     );
   }
 
-  const tabs: { id: Tab; label: string; icon: JSX.Element; show: boolean }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ReactElement; show: boolean }[] = [
     { id: 'browser', label: 'Browser', icon: <IBrowser size={13} />, show: true },
     { id: 'terminal', label: 'Terminal', icon: <ITerm size={13} />, show: true },
     { id: 'desktop', label: 'Desktop', icon: <IDesktop size={13} />, show: !!machine?.has_desktop && !!machine.desktop_url },
@@ -250,6 +240,24 @@ export function LiveView(p: Props) {
         </span>
       </div>
       {view}
+      {driving && live && tab !== 'desktop' ? (
+        <div className="drive-bar">
+          <b>You're driving {machineName(task.machine_id)}</b>
+          <span className="s">{execName(task.executor)} paused at step {task.step} · {tab === 'terminal' ? 'type in the terminal' : 'click the page, then type · Esc stops typing'}</span>
+          <span className="sp" />
+          <button onClick={() => setControl(task, false)}>Hand back <kbd>T</kbd></button>
+        </div>
+      ) : tab === 'browser' && (
+        <div className="vstatus">
+          {p.curRow && !isEnded ? (
+            <span className="cur"><span className={`k ${actorClass(p.curRow.actor)}`} /><b>{p.curRow.tool}</b><span className="tg">{p.curRow.target}</span>{p.curRow.pending ? <span className="pend">{live ? 'running' : 'running at this point'}</span> : p.curRow.result ? <span className="res">→ {p.curRow.result}</span> : null}</span>
+          ) : isEnded ? (
+            <span className="cur"><span className={`rtag ${task.outcome === 'partial' ? 'partial' : task.status !== 'done' || task.outcome === 'failed' ? 'bad' : ''}`}><IReceipt />{task.status === 'done' ? (task.outcome === 'partial' ? 'Partial · proof' : 'Receipt') : task.status === 'cancelled' ? 'Cancelled' : 'Failed'}</span><span className="dim">{task.status === 'done' ? 'final screenshot, taken when the run finished' : 'last frame before it stopped'}</span></span>
+          ) : <span className="cur dim">Idle</span>}
+          <span className="sp" />
+          <span className="dim">{u ? <span className="mob">{u.host}{u.path.length > 1 ? u.path : ''} · </span> : null}{machineName(task.machine_id)} · Chrome{fsz ? ` · ${fsz.w}×${fsz.h}` : ''}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,16 @@
+{
+  "name": "Familiar Desk",
+  "short_name": "Familiar",
+  "description": "Watch, steer and approve your agents.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#100f0e",
+  "theme_color": "#100f0e",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

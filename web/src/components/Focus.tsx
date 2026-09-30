@@ -118,9 +118,9 @@ export function Focus({ task }: { task: Task }) {
         if (c.cursor != null && e.key === 'ArrowLeft' && c.moms[c.selIdx] && c.cursor > c.moms[c.selIdx].ms + 800) i = c.selIdx;
         if (i >= c.moms.length) setCursor(null);
         else setCursor(c.moms[Math.max(0, i)].ms);
-      } else if (k === 'l') setCursor(null);
-      else if (k === 't') { if (!ENDED.includes(c.task.status)) setControl(c.task, !c.driving); }
-      else if (k === 'f') setWide((w) => !w);
+      } else if (k === 'l') { e.preventDefault(); setCursor(null); }
+      else if (k === 't') { e.preventDefault(); if (!ENDED.includes(c.task.status)) setControl(c.task, !c.driving); }
+      else if (k === 'f') { e.preventDefault(); setWide((w) => !w); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -140,9 +140,11 @@ export function Focus({ task }: { task: Task }) {
     nk = task.status === 'done' ? (task.outcome === 'partial' ? 'Partly' : 'Done') : task.status === 'failed' ? 'Failed' : 'Stopped';
     intent = task.summary || task.now || '';
     sub = <>ended {timeOf(task.ended_at)} · took {dur(elapsed)}</>;
-  } else if (task.waiting_for || n) {
-    const since = n ? Date.parse(n.created_at) : curRow?.pending ? start + curRow.ms : now;
-    sub = <>waiting for <span className="wf">{task.waiting_for || (n?.kind === 'approval' ? 'your approval' : 'your answer')}</span> · {dur(now - since)}</>;
+  } else if (n) {
+    sub = <><span className="wf">{n.kind === 'approval' ? 'waiting for your approval' : 'waiting on your answer'}</span> · {dur(now - Date.parse(n.created_at))}</>;
+  } else if (task.waiting_for) {
+    const since = curRow?.pending ? start + curRow.ms : now;
+    sub = <>waiting for <span className="wf">{task.waiting_for}</span> · {dur(now - since)}</>;
   } else if (curRow?.pending) {
     sub = <>{curRow.tool} · {dur(now - (start + curRow.ms))}</>;
   }
@@ -175,7 +177,7 @@ export function Focus({ task }: { task: Task }) {
                 <IHand />{driving ? 'Hand back' : 'Take control'} <kbd>T</kbd>
               </button>
               <button className={`xbtn ${armed ? 'armed' : ''}`} onClick={() => { if (armed) { cancelTask(task); setArmed(false); } else { setArmed(true); setTimeout(() => setArmed(false), 3500); } }} aria-label={armed ? 'Confirm cancel run' : 'Cancel run'} title="Cancel this run">
-                <IStop />{armed && 'Cancel run?'}
+                <IStop size={13} />{armed && 'Cancel run?'}
               </button>
             </>
           )}

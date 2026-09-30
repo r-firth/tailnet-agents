@@ -119,6 +119,15 @@ export function moments(evs: TaskEvent[]): Moment[] {
       case 'failed': out.push({ ...b, actor: 'machine', label: 'Failed', detail: e.error }); break;
     }
   }
+  // runs without a browser (coding, shell work) get their finished steps and
+  // failing commands as moments, so the strip still tells the story
+  if (!evs.some((e) => e.kind === 'keyframe')) {
+    for (const e of evs) {
+      if (e.kind === 'step' && e.state === 'done') out.push({ key: `s${e.id}`, ms: e.ms, kind: 'step', actor: 'term', label: 'Step', detail: e.text, ev: e });
+      else if (e.kind === 'tool' && e.status === 'error') out.push({ key: `x${e.id}`, ms: e.ms, kind: 'error', actor: 'machine', label: e.tool || 'Error', detail: `${e.target} → ${e.result}`, ev: e });
+    }
+  }
+  out.sort((a, b) => a.ms - b.ms || a.ev.id - b.ev.id);
   // a done event that repeats the last keyframe's receipt adds nothing
   return out.filter((m, i) => !(m.kind === 'done' && m.artifact && out[i - 1]?.artifact === m.artifact));
 }

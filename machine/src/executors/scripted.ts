@@ -10,8 +10,13 @@ import { AbortedError } from "../util.js";
  */
 export type Scenario = "cancel" | "pay" | "install" | "generic";
 
+/** The request itself: the server may append context (e.g. "What I remember that may help:") after it. */
+export function requestLine(brief: string): string {
+  return (brief.split(/\n\s*\n|\nWhat I remember/i)[0] ?? brief).split("\n")[0].trim() || brief;
+}
+
 export function pickScenario(brief: string): Scenario {
-  const b = brief.toLowerCase();
+  const b = requestLine(brief).toLowerCase();
   if (/\b(cancel|unsubscribe)\b/.test(b)) return "cancel";
   if (/\b(pay|book|buy|purchase|checkout)\b/.test(b)) return "pay";
   if (/\binstall\b/.test(b)) return "install";
@@ -152,7 +157,7 @@ async function cancel(h: Host, t: TaskRun, r: Run) {
 async function pay(h: Host, t: TaskRun, r: Run) {
   h.demo.reset();
   await r.loginCookie();
-  const rail = /\b(train|rail|ticket|trip|travel|edinburgh|journey)\b/i.test(t.brief);
+  const rail = /\b(train|rail|ticket|trip|travel|edinburgh|journey)\b/i.test(requestLine(t.brief));
   const shop = rail
     ? {
         merchant: "Northline Rail",
@@ -212,7 +217,7 @@ async function pay(h: Host, t: TaskRun, r: Run) {
 }
 
 async function install(h: Host, t: TaskRun, r: Run) {
-  const raw = /install\s+(?:the\s+|a\s+|an\s+|me\s+)?([a-z0-9][a-z0-9._+-]*)/i.exec(t.brief)?.[1] ?? "tool";
+  const raw = /install\s+(?:the\s+|a\s+|an\s+|me\s+)?([a-z0-9][a-z0-9._+-]*)/i.exec(requestLine(t.brief))?.[1] ?? "tool";
   const name = raw.toLowerCase().replace(/[^a-z0-9._+-]/g, "").slice(0, 32) || "tool";
   const Name = name[0].toUpperCase() + name.slice(1);
   const s = (secs: number) => (secs / h.cfg.scriptSpeed).toFixed(3);
@@ -267,7 +272,7 @@ async function install(h: Host, t: TaskRun, r: Run) {
 async function generic(h: Host, t: TaskRun, r: Run) {
   await r.loginCookie();
   await r.step("Check memory for anything relevant", 4);
-  await r.tool("memory_search", { query: t.brief.slice(0, 200) });
+  await r.tool("memory_search", { query: requestLine(t.brief).slice(0, 200) });
   await r.pause(500);
 
   await r.step("Look over the machine");
@@ -289,6 +294,6 @@ async function generic(h: Host, t: TaskRun, r: Run) {
   await r.pause(400);
   await r.tool("finish", {
     outcome: "success",
-    summary: `Scripted demo run for "${t.brief.slice(0, 80)}": the machine is healthy (${kernel}), ${free} free in the home directory, and Chrome is working. Pick the claude or codex executor for real work.`,
+    summary: `Scripted demo run for "${requestLine(t.brief).slice(0, 80)}": the machine is healthy (${kernel}), ${free} free in the home directory, and Chrome is working. Pick the claude or codex executor for real work.`,
   });
 }

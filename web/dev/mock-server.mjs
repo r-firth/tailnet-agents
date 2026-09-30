@@ -211,7 +211,7 @@ class Run {
   constructor(task) { this.t = task; this.gen = GEN; this.stepN = 0; S.runs.set(task.id, this); }
   get alive() { return this.gen === GEN && !this.cancelled && S.tasks.get(this.t.id) === this.t; }
   async sleep(ms) {
-    let left = ms / SPEED;
+    let left = (ms * (this.pace || 1)) / SPEED;
     while (left > 0) {
       if (!this.alive) throw ABORT;
       await delay(100);
@@ -242,11 +242,11 @@ class Run {
     return a;
   }
   term(s) { termWrite(this.t, s); }
-  async ask(question, options, allow_text = true, title) {
+  async ask(question, options, allow_text = true, title, detail) {
     const qid = rid('q_');
     this.ev('ask', { question_id: qid, question, options }, 'agent');
     S.needs.push({ id: qid, task_id: this.t.id, task_num: this.t.num, task_title: this.t.title, kind: 'question',
-      title: title || question, detail: `${this.t.num} · ${machineName(this.t.machine_id)} · ${this.t.now}`,
+      title: title || question, detail: detail || `${machineName(this.t.machine_id)} · ${this.t.now}`,
       options: options.map((o) => ({ ...o })), allow_text, created_at: iso() });
     pushNeeds();
     this.upd({ status: 'waiting', waiting_for: 'your answer' });
@@ -429,6 +429,7 @@ function scenarioMeshy() {
   setMachineTask('m_errands', t.id);
   S.messages.push({ id: rid('msg_'), role: 'user', text: 'cancel my meshy sub', channel: 'telegram', task_id: null, at: iso(now - 1600) });
   run(t, async (r) => {
+    r.pace = 1.7;
     r.ev('brief', { text: 'cancel my meshy sub', channel: 'telegram' }, 'you');
     r.step('Brief received via Telegram', 's1'); r.upd({ status: 'running' });
     await r.sleep(1200); r.done('s1', 'Brief received via Telegram');
@@ -479,7 +480,7 @@ function scenarioMeshy() {
     await r.keyframe('Meshy · Cancelling', 'https://meshy.ai/settings/billing');
     r.upd({ now: 'Confirm, then verify the plan now ends 14 Oct', waiting_for: 'text "cancelled"' });
     await focusEl(t, '#wait', 'wait_for · text~"cancelled"', true);
-    await r.tool('browser.wait_for', 'text~"cancelled"', 'browser', 26000, 'found');
+    await r.tool('browser.wait_for', 'text~"cancelled"', 'browser', 45000, 'found');
     await show(t, 'cancelled');
     r.upd({ waiting_for: null });
     await r.keyframe('Meshy · Subscription cancelled', 'https://meshy.ai/settings/billing');
@@ -542,7 +543,7 @@ function scenarioBlender() {
     const kf = await shot(t, 80);
     if (kf) { const a = storeArtifact(kf); t.last_frame_artifact = a; addEvent(t, 'keyframe', { artifact: a, url: 'desktop://studio/Blender Setup', title: 'Blender Setup · choose a version' }, 'browser', at(140)); }
     r.stepN = 4;
-    const qa = await r.ask('Blender: 4.5 LTS or 4.6?', [{ id: '4.5', label: '4.5 LTS' }, { id: '4.6', label: '4.6' }], true);
+    const qa = await r.ask('Blender: 4.5 LTS or 4.6?', [{ id: '4.5', label: '4.5 LTS' }, { id: '4.6', label: '4.6' }], true, null, 'studio · installer paused on the version picker · you pin LTS for client work');
     const v = qa.answer === '4.6' ? '4.6' : '4.5';
     const label = v === '4.6' ? '4.6' : '4.5 LTS';
     r.done('b4', qa.text ? `You said: “${qa.text}”` : `You answered ${label}`);
@@ -667,7 +668,7 @@ function scenarioCode() {
     for (const f of tests) {
       const n = 20 + Math.floor(Math.random() * 30);
       let line = '';
-      for (let i = 0; i < n; i++) { line += '.'; dots++; if (i % 6 === 5) { r.term(`${ANSI.g}${line}${ANSI.x}`); line = ''; await r.sleep(rand(250, 700)); } }
+      for (let i = 0; i < n; i++) { line += '.'; dots++; if (i % 4 === 3) { r.term(`${ANSI.g}${line}${ANSI.x}`); line = ''; await r.sleep(rand(1200, 3200)); } }
       r.term(`${ANSI.g}${line}${ANSI.x}`);
       r.term(`${' '.repeat(Math.max(1, 58 - (dots % 58)))}${ANSI.d}[${String(Math.round((tests.indexOf(f) + 1) / tests.length * 100)).padStart(3)}%]${ANSI.x}\r\n`);
       await r.sleep(800);
@@ -742,12 +743,13 @@ const GENERIC = [
 ];
 
 function spawnNext(brief, executor, source = 'telegram') {
-  const g = brief ? { ...GENERIC[S.spawnIdx++ % GENERIC.length], brief, title: titleOf(brief) } : GENERIC[S.spawnIdx++ % GENERIC.length];
+  const g = brief ? genericFor(brief) : GENERIC[S.spawnIdx++ % GENERIC.length];
   let m = [...S.machines.values()].find((x) => x.status === 'online' && !x.task_id && x.backend !== 'ssh' && x.id !== 'm_code');
-  const t = newTask({ title: g.title, brief: g.brief, status: 'queued', executor: executor || S.settings.default_executor, machine_id: m?.id || null, source, created: Date.now(), steps_estimate: 5, now: 'Picking a machine' });
+  const t = newTask({ title: g.title, brief: g.brief, status: 'queued', executor: executor || S.settings.default_executor, machine_id: m?.id || null, source, created: Date.now(), started: Date.now(), steps_estimate: 5, now: 'Picking a machine' });
   pushTask(t);
   if (!brief) { S.messages.push({ id: rid('msg_'), role: 'user', text: g.brief, channel: 'telegram', task_id: null, at: iso() }); broadcast({ type: 'message', message: S.messages.at(-1) }); }
   run(t, async (r) => {
+    r.pace = 1.6;
     if (!m) {
       await r.sleep(800);
       m = forkMachine('m_errands');
@@ -756,7 +758,7 @@ function spawnNext(brief, executor, source = 'telegram') {
       await r.sleep(2500);
     }
     setMachineTask(m.id, t.id);
-    r.upd({ status: 'starting', machine_id: m.id, started_at: iso(), now: `Waking ${m.name}` });
+    r.upd({ status: 'starting', machine_id: m.id, now: `Waking ${m.name}` });
     r.ev('brief', { text: g.brief, channel: source }, 'you');
     r.term(agentdBanner(m.name, t));
     await r.sleep(1800);
@@ -792,9 +794,23 @@ function spawnNext(brief, executor, source = 'telegram') {
     r.done('g4', 'Reported back');
     await r.finish('success', g.summary);
     await delay(8000 / SPEED); await closeSite(t);
-    if (!brief && r.gen === GEN) { await delay(40000 / SPEED); if (r.gen === GEN) spawnNext(); }
+    if (!brief && r.gen === GEN) { await delay(30000 / SPEED); if (r.gen === GEN) spawnNext(); }
   });
   return t;
+}
+
+function genericFor(brief) {
+  const q = brief.replace(/^(please|can you|could you)\s+/i, '').replace(/^(find|search|look up|check|get)( me)?\s+/i, '');
+  const T = q.charAt(0).toUpperCase() + q.slice(1);
+  return {
+    brief, title: titleOf(brief), q,
+    results: [['timeout.com › edinburgh', `${T}: 9 of the best, tried and tested`, 'Updated September 2026 · our local writers picked the places worth your time…'],
+      ['google.com › maps', `${T} · Leith, Edinburgh`, '4.6 ★ (318) · Open until 18:00 · 0.4 mi'],
+      ['reddit.com › r/Edinburgh', `Recommendations: ${q}?`, '"Honestly the one on Constitution Street, quiet in the mornings…"']],
+    title3: `${T}: 9 of the best`, by: 'timeout.com · updated 14 Sep 2026',
+    body: `<p>We visited every contender in person. Our top three for <b>${q}</b> are below, with opening hours and what to expect.</p><table><tr><th>Place</th><th>Area</th><th>Why</th></tr><tr><td>Williams &amp; Johnson</td><td>Leith</td><td>Quiet mornings, fast Wi-Fi, sockets</td></tr><tr><td>Mimi's Little Bakehouse</td><td>The Shore</td><td>Big tables, open till 18:00</td></tr><tr><td>Twelve Triangles</td><td>Leith Walk</td><td>Best pastries, busier at weekends</td></tr></table>`,
+    summary: `Top pick for “${q}”: Williams & Johnson in Leith (quiet mornings, fast Wi-Fi). Also Mimi's on The Shore and Twelve Triangles on Leith Walk.`,
+  };
 }
 
 let forkN = 2;
@@ -1067,3 +1083,5 @@ await boot();
 frameLoop();
 machineLoop();
 server.listen(PORT, '127.0.0.1', () => console.log(`[mock] Familiar mock server on http://127.0.0.1:${PORT}  (${EMPTY ? 'empty' : 'demo'} scenario, speed ×${SPEED}${TOKEN ? ', token required' : ''})`));
+
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, async () => { try { await browser?.close(); } catch {} process.exit(0); });

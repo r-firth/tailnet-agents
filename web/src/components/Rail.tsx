@@ -65,6 +65,16 @@ export function Rail() {
       {!others.length && act.length > 0 && (
         <div className="rail-empty"><b>Only one run right now</b>Other runs appear here as live tiles. Start one from Message Familiar or Telegram.</div>
       )}
+      {act.length === 0 && (
+        <div className="rail-empty">
+          <b>Machines</b>
+          {Object.values(s.machines).length === 0 && <span>None connected yet.</span>}
+          {Object.values(s.machines).map((m) => (
+            <div key={m.id} className="mrow2"><span className={`dot ${m.status === 'online' || m.status === 'busy' ? 'ok' : ''}`} /><span className="n">{m.name}</span><small>{m.backend} · {m.specs.cpu} vCPU</small></div>
+          ))}
+          <span style={{ marginTop: 4 }}>Runs appear here as live tiles. Finished ones collect under Earlier today.</span>
+        </div>
+      )}
       {done.length > 0 && (
         <div className="earlier">
           <div className="sh">Earlier today<span className="aux">{done.length} finished</span></div>

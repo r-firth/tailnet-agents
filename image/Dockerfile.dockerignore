@@ -1,0 +1,9 @@
+# Build context is the repo root; only machine/ and image/ are needed.
+*
+!machine/package.json
+!machine/package-lock.json
+!machine/tsconfig.json
+!machine/tsconfig.test.json
+!machine/src
+!machine/test
+!image/entrypoint.sh

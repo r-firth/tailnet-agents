@@ -141,6 +141,7 @@ export class Browser {
       executablePath,
       headless: this.headless,
       viewport: null,
+      ignoreDefaultArgs: ["--enable-automation"], // no "controlled by automated test software" bar in the desktop view
       locale: "en-GB",
       timezoneId: process.env.TZ || "Europe/London",
       args: [
@@ -171,6 +172,8 @@ export class Browser {
 
   /** Resize the OS window so the page's content area is exactly VIEWPORT. */
   private async fitWindow(p: Page) {
+    const [w0, h0] = (await p.evaluate("[innerWidth, innerHeight]")) as [number, number];
+    if (w0 === VIEWPORT.width && h0 === VIEWPORT.height) return;
     const cdp = await this.context!.newCDPSession(p);
     try {
       for (let i = 0; i < 3; i++) {
@@ -193,6 +196,8 @@ export class Browser {
     const old = this.cdp;
     this.page = p;
     this.cdp = null;
+    // Info bars (e.g. crash-restore) come and go and change the content height; keep it at VIEWPORT.
+    p.on("load", () => void this.fitWindow(p).catch(() => {}));
     p.on("close", () => {
       if (this.page !== p) return;
       const rest = this.context?.pages().filter((x) => x !== p && !x.isClosed()) ?? [];
@@ -246,6 +251,7 @@ export class Browser {
     const p = await this.activePage();
     const resp = await raceAbort(p.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 }), signal ?? new AbortController().signal);
     await p.waitForLoadState("load", { timeout: 5000 }).catch(() => {});
+    await this.fitWindow(p).catch(() => {});
     return { url: p.url(), title: await p.title().catch(() => ""), status: resp?.status() ?? null };
   }
 

@@ -11,9 +11,11 @@ const here = path.dirname(fileURLToPath(import.meta.url)); // dist/test
 const dist = path.resolve(here, "..");
 const MAIN = path.join(dist, "main.js");
 const FAKE_CLAUDE = path.join(here, "fake-claude.js");
+const FAKE_CODEX = path.join(here, "fake-codex.js");
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentd-test-"));
 const claudeState = path.join(home, "..", `${path.basename(home)}-claude-state`);
+const codexPath = path.join(home, "..", `${path.basename(home)}-codex`); // exists only during the codex test
 const server = new FakeServer({ token: "secret" });
 let proc: ChildProcess;
 let logs = "";
@@ -37,7 +39,7 @@ describe("agentd end to end (fake server, scripted executor at 10x)", () => {
     await server.start();
     fs.writeFileSync(claudeState, "ok");
     fs.chmodSync(FAKE_CLAUDE, 0o755);
-    const env = { ...process.env, FAMILIAR_SCRIPT_SPEED: "10", FAMILIAR_CLAUDE_BIN: FAKE_CLAUDE, FAKE_CLAUDE_STATE: claudeState, FAMILIAR_CODEX_BIN: "/nonexistent/codex", FAMILIAR_LOG: "info" };
+    const env = { ...process.env, FAMILIAR_SCRIPT_SPEED: "10", FAMILIAR_CLAUDE_BIN: FAKE_CLAUDE, FAKE_CLAUDE_STATE: claudeState, FAMILIAR_CODEX_BIN: codexPath, FAMILIAR_LOG: "info" };
     delete (env as any).DISPLAY;
     proc = spawn(process.execPath, [MAIN, "--server", server.url, "--token", "secret", "--id", "m_test", "--name", "test", "--backend", "local", "--home", home], { env, stdio: ["ignore", "pipe", "pipe"] });
     proc.stderr!.on("data", (d) => (logs += d));
@@ -59,6 +61,7 @@ describe("agentd end to end (fake server, scripted executor at 10x)", () => {
     if (process.env.KEEP_TEST_HOME) console.log("home:", home);
     else fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(claudeState, { force: true });
+    fs.rmSync(codexPath, { force: true });
   });
 
   it("says hello with specs and executors", async () => {
@@ -265,6 +268,27 @@ describe("agentd end to end (fake server, scripted executor at 10x)", () => {
     const done2 = await server.runTask("t_claude_auth2", "anything", "claude");
     assert.equal(done2.type, "task.failed");
     assert.match(done2.error, /isn't signed in/);
+  });
+
+  it("runs the codex executor through the familiar MCP server", async () => {
+    fs.chmodSync(FAKE_CODEX, 0o755);
+    fs.symlinkSync(FAKE_CODEX, codexPath); // symlink so its imports resolve from machine/node_modules
+    try {
+      const done = await server.runTask("t_codex_ok", "check the machine", "codex");
+      assert.equal(done.type, "task.done", JSON.stringify(done) + "\n" + logs.slice(-3000));
+      assert.equal(done.outcome, "success");
+      assert.match(done.summary, /All good/);
+      const ev = server.events("t_codex_ok");
+      assertToolPairs(ev);
+      assert.equal(ev.filter((e) => e.kind === "tool" && e.tool === "shell" && e.status === "pending").length, 2, "familiar shell recorded once + codex's own command");
+      assert.ok(ev.some((e) => e.kind === "tool" && e.target === "bash -lc ls" && e.status === "ok"));
+      assert.ok(ev.some((e) => e.kind === "step" && e.text === "Check the machine"));
+      assert.ok(ev.some((e) => e.kind === "message" && /All good/.test(e.text)));
+      const toks = server.forTask("t_codex_ok").filter((m) => m.type === "task.update" && m.tokens);
+      assert.equal(toks.at(-1)?.tokens, 8600);
+    } finally {
+      fs.rmSync(codexPath, { force: true });
+    }
   });
 
   it("reports a clean failure when codex is missing", async () => {

@@ -201,6 +201,8 @@ pub struct Settings {
     pub telegram_chat_id: Option<i64>,
     #[serde(default = "default_cap")]
     pub time_cap_s: u64,
+    #[serde(default)]
+    pub telegram_offset: i64,
 }
 
 fn default_cap() -> u64 {

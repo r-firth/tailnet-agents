@@ -242,15 +242,17 @@ async fn machines(State(hub): State<AppState>) -> Json<Value> {
 
 #[derive(Deserialize, Default)]
 struct StartMachine {
+    id: Option<String>,
     fork_of: Option<String>,
 }
 
 async fn start_machine(State(hub): State<AppState>, body: Option<Json<StartMachine>>) -> Response {
     let body = body.map(|b| b.0).unwrap_or_default();
     let launcher = hub.launcher.clone();
-    let id = match &body.fork_of {
-        Some(parent) => format!("{parent}-fork{}", chrono::Utc::now().timestamp() % 10000),
-        None => launcher.personal_id(),
+    let id = match (&body.id, &body.fork_of) {
+        (_, Some(parent)) => format!("{parent}-fork{}", chrono::Utc::now().timestamp() % 10000),
+        (Some(id), None) => id.clone(),
+        (None, None) => launcher.personal_id(),
     };
     match launcher.start(&hub, &id, body.fork_of.clone()).await {
         Ok(()) => Json(json!({"machine": {"id": id, "status": "starting"}})).into_response(),

@@ -158,6 +158,11 @@ function handle(msg: ServerMsg) {
       const tokenHist = prev && prev.tokens !== msg.task.tokens ? { ...state.tokenHist, [msg.task.id]: th.concat(msg.task.tokens).slice(-60) } : state.tokenHist;
       state = { ...state, tasks: { ...state.tasks, [msg.task.id]: msg.task }, tokenHist };
       if (!prev || (prev && isActive(prev) && !isActive(msg.task))) ensureFocus();
+      else if (!state.focusPinned && prev.status !== 'running' && msg.task.status === 'running') {
+        // an unpinned desk follows the action: prefer a running run over one that is waiting
+        const cur = state.focusId ? state.tasks[state.focusId] : null;
+        if (!cur || cur.status !== 'running') { const id = msg.task.id; queueMicrotask(() => focus(id, false)); }
+      }
       emit();
       break;
     }
@@ -191,7 +196,7 @@ onFirstFrame(() => {
   setState((s) => ({ framedTick: s.framedTick + 1 }));
   if (!state.focusPinned) {
     const cur = state.focusId ? state.tasks[state.focusId] : null;
-    if (cur && !hasFrames(cur.id) && cur.status !== 'running') ensureFocusForce();
+    if (cur && !hasFrames(cur.id) && isActive(cur)) ensureFocusForce();
   }
 });
 function ensureFocusForce() { const id = pickFocus(state); if (id && id !== state.focusId) focus(id, false); }

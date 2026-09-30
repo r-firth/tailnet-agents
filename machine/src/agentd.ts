@@ -6,7 +6,7 @@ import { Bridge } from "./bridge.js";
 import { Browser } from "./browser.js";
 import { type Config, connectUrl } from "./config.js";
 import { Connection } from "./conn.js";
-import { DemoSite } from "./demo-site.js";
+import { DemoSite, SESSION_COOKIE, SESSION_VALUE } from "./demo-site.js";
 import { claudeBin, runClaude } from "./executors/claude.js";
 import { codexBin, runCodex } from "./executors/codex.js";
 import { ExecutorError } from "./executors/common.js";
@@ -61,6 +61,7 @@ export class Agentd implements Host {
       if (t) this.conn.send({ type: "frame", task_id: t.id, data, w, h });
     };
     await this.browser.start().catch((e) => log("error", "browser failed to start (will retry on first use)", e));
+    await this.demoLogin();
     this.installs = scanInstalls(this.cfg.home);
     this.conn.on("message", (m: Msg) => void this.onMessage(m).catch((e) => log("error", `handling ${m.type} failed`, e)));
     this.conn.on("open", () => this.onOpen());
@@ -180,6 +181,7 @@ export class Agentd implements Host {
     log("info", `task ${taskId} started (${executor}): ${task.brief.slice(0, 120)}`);
     const capTimer = setTimeout(() => task.cancel("time cap"), cap * 1000);
     this.update(task, { now: "Getting started", step: 0 });
+    await this.demoLogin();
     try {
       if (executor === "scripted") await runScripted(this, task);
       else if (executor === "claude") await runClaude(this, task);
@@ -215,6 +217,11 @@ export class Agentd implements Host {
       this.applyRate();
       this.refreshInstalls();
     }
+  }
+
+  /** The demo sites count as "already logged in" (a saved session cookie), whatever the executor. */
+  private async demoLogin() {
+    await this.browser.addCookies([{ name: SESSION_COOKIE, value: SESSION_VALUE, url: this.demo.origin }]).catch(() => {});
   }
 
   private finishTask(task: TaskRun) {
