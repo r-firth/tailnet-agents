@@ -48,7 +48,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "browser_screenshot",
     description: "Screenshot of the current page (also recorded on the task timeline).",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: { caption: str("optional: what the screenshot shows, a few words, e.g. 'Receipt'") } },
   },
   {
     name: "memory_search",
@@ -75,7 +75,15 @@ export const TOOLS: ToolDef[] = [
   {
     name: "step",
     description: "Announce the intent of your next few actions in one short line (shown to the user as the current step), e.g. 'Open billing settings'.",
-    inputSchema: { type: "object", properties: { text: str("short intent line"), steps_estimate: num("optional: total steps you expect") }, required: ["text"] },
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: str("short intent line"),
+        next: { type: "array", items: { type: "string" }, description: "optional: the steps you expect after this one, short intent lines. Shown as the plan ahead; send it again whenever the plan changes." },
+        steps_estimate: num("optional: total steps you expect (implied by next)"),
+      },
+      required: ["text"],
+    },
   },
   {
     name: "finish",
@@ -96,7 +104,7 @@ export const TOOLS: ToolDef[] = [
 ];
 
 export const TOOL_GUIDANCE = `You are working on the user's personal Familiar machine. Use ONLY the "familiar" MCP tools for actions:
-- Call step("…") with a short intent line before each phase of work, so the user can follow along.
+- Call step("…") with a short intent line before each phase of work, so the user can follow along. On the first step, pass next: [...] with the steps you expect after it, and again whenever the plan changes.
 - Use the shell tool for every command (it runs in the terminal the user can watch). The built-in Bash tool is disabled.
 - Use browser_* tools for the web: browser_navigate, then browser_snapshot to get refs, then browser_click / browser_type with those refs. Chrome keeps the user's logins.
 - Call memory_search first for anything about the user's accounts, preferences or past procedures; call memory_note for durable facts you learn (and kind=procedure for a reusable recipe).

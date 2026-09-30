@@ -60,25 +60,29 @@ async function recorded<T>(
   }
 }
 
-async function keyframe(host: Host, task: TaskRun) {
+/** A screenshot on the timeline; `action` says what just happened, in words the filmstrip can show. */
+async function keyframe(host: Host, task: TaskRun, action?: string) {
   try {
     const shot = await host.browser.screenshot();
     task.lastScreenshot = shot.jpeg;
-    host.event(task, { kind: "keyframe", actor: "browser", image: shot.jpeg.toString("base64"), url: shot.url, title: shot.title });
+    host.event(task, { kind: "keyframe", actor: "browser", image: shot.jpeg.toString("base64"), url: shot.url, title: shot.title, ...(action ? { action } : {}) });
     return shot;
   } catch {
     return null;
   }
 }
 
-export function startStep(host: Host, task: TaskRun, text: string, stepsEstimate?: number) {
+export function startStep(host: Host, task: TaskRun, text: string, stepsEstimate?: number, next?: string[]) {
   closeStep(host, task, "done");
   task.stepNo += 1;
+  if (next) stepsEstimate = task.stepNo + next.length;
   if (stepsEstimate && stepsEstimate > 0) task.stepsEstimate = Math.max(Math.round(stepsEstimate), task.stepNo);
   else if (task.stepsEstimate !== undefined && task.stepNo > task.stepsEstimate) task.stepsEstimate = task.stepNo;
   const step_id = `s${task.stepNo}`;
   task.activeStep = { id: step_id, text };
   host.event(task, { kind: "step", actor: "agent", text, state: "active", step_id });
+  // The plan ahead replaces any earlier one; `after` is the step it was made at.
+  if (next) host.event(task, { kind: "plan", actor: "agent", steps: next, after: task.stepNo });
   host.update(task, { now: text, step: task.stepNo, ...(task.stepsEstimate ? { steps_estimate: task.stepsEstimate } : {}) });
 }
 
@@ -106,7 +110,8 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
       case "step": {
         const text = oneLine(String(a.text ?? ""), 140);
         if (!text) return err("text is required");
-        startStep(host, task, text, Number(a.steps_estimate) || undefined);
+        const next = Array.isArray(a.next) ? a.next.map((x) => oneLine(String(x), 140)).filter(Boolean).slice(0, 12) : undefined;
+        startStep(host, task, text, Number(a.steps_estimate) || undefined, next);
         return ok("noted");
       }
       case "shell": {
@@ -132,7 +137,7 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         const url = String(a.url ?? "");
         if (!url) return err("url is required");
         const r = await recorded(host, task, "browser.navigate", url, () => b.navigate(url, task.signal), (r) => ({ result: r.title || r.url }));
-        await keyframe(host, task);
+        await keyframe(host, task, `Opened ${shortTitle(r.title) || hostOf(r.url)}`);
         return ok(`Opened ${r.url} — "${r.title}"${r.status && r.status >= 400 ? ` (HTTP ${r.status})` : ""}`, r);
       }
       case "browser_snapshot": {
@@ -143,7 +148,7 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         const t = targetOf(a);
         if (!t) return err("ref or text is required");
         const r = await recorded(host, task, "browser.click", b.describe(t), () => b.click(t), (r) => ({ result: r.title ? `→ ${r.title}` : "clicked" }));
-        await keyframe(host, task);
+        await keyframe(host, task, `Clicked “${truncate(String(r.clicked ?? t), 32)}”`);
         return ok(`Clicked "${r.clicked}". Now on ${r.url} — "${r.title}"`, r);
       }
       case "browser_type": {
@@ -153,14 +158,14 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         const secret = /pass|secret|token|card|cvc|cvv/i.test(t);
         const shown = secret ? "•".repeat(Math.min(value.length, 8)) : truncate(value, 60);
         const r = await recorded(host, task, "browser.type", `${b.describe(t)} ← "${shown}"`, () => b.type(t, value, !!a.submit), () => ({ result: a.submit ? "typed and submitted" : "typed" }));
-        await keyframe(host, task);
+        await keyframe(host, task, a.submit ? `Typed and sent “${secret ? "•••" : truncate(value, 24)}”` : `Typed “${secret ? "•••" : truncate(value, 24)}”`);
         return ok(`Typed into ${t}${a.submit ? " and pressed Enter" : ""}. Now on ${r.url}`, r);
       }
       case "browser_press": {
         const key = String(a.key ?? "");
         if (!key) return err("key is required");
         await recorded(host, task, "browser.press", key, () => b.press(key), () => ({ result: "pressed" }));
-        await keyframe(host, task);
+        await keyframe(host, task, `Pressed ${key}`);
         return ok(`Pressed ${key}`);
       }
       case "browser_wait_for": {
@@ -170,7 +175,7 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         host.update(task, { waiting_for: `text "${truncate(text, 40)}"` });
         try {
           const r = await recorded(host, task, "browser.wait_for", `text "${text}"`, () => b.waitFor(text, timeout, task.signal), (r) => ({ result: `appeared after ${(r.waited_ms / 1000).toFixed(1)}s` }));
-          await keyframe(host, task);
+          await keyframe(host, task, `“${truncate(text, 28)}” appeared`);
           return ok(`"${text}" is visible on ${r.url}`, r);
         } finally {
           host.update(task, { waiting_for: null });
@@ -180,7 +185,7 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         const shot = await recorded(host, task, "browser.screenshot", "page", () => b.screenshot(), (s) => ({ result: s.title || s.url }));
         task.lastScreenshot = shot.jpeg;
         const image = shot.jpeg.toString("base64");
-        host.event(task, { kind: "keyframe", actor: "browser", image, url: shot.url, title: shot.title });
+        host.event(task, { kind: "keyframe", actor: "browser", image, url: shot.url, title: shot.title, action: String(a.caption ?? "") || "Screenshot" });
         return ok(`Screenshot of ${shot.url} — "${shot.title}"`, { url: shot.url, title: shot.title }, image);
       }
       case "memory_search": {
@@ -252,4 +257,12 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
     if (e instanceof AbortedError) throw e;
     return err(`${name} failed: ${(e as Error).message.split("\n")[0]}`);
   }
+}
+
+/** "Billing · Polyform" → "Billing"; page titles lead with the page and end with the site. */
+function shortTitle(title: string | undefined): string {
+  return truncate(String(title ?? "").split(/\s+[·|–—-]\s+/)[0].trim(), 36);
+}
+function hostOf(url: string): string {
+  try { return new URL(url).host.replace(/^www\./, ""); } catch { return url; }
 }

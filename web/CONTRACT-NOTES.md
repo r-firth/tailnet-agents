@@ -39,6 +39,15 @@ of them block the UI: without the additions it degrades gracefully.
    ("Cancelled by you…") and sets `status:"cancelled"`. Either is fine for the UI;
    a dedicated kind would read better in the action log.
 
+## Added since
+
+- **`plan` events.** `{kind:"plan", steps:[…], after:N}` lists the steps the agent
+  expects after step N (the executor's `step` tool takes an optional `next`). The
+  Steps panel shows the latest plan's remaining items as pending. This replaces
+  proposal 1 above.
+- **`keyframe.action`.** What just happened, in words ("Clicked “Billing”"). The
+  filmstrip labels keyframes with it, falling back to the step at that moment.
+
 ## Behaviour the UI relies on
 
 - **Artifact auth by cookie.** `<img src="/api/artifacts/:id">` cannot send a

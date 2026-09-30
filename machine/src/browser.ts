@@ -221,7 +221,7 @@ export class Browser {
         if (this.cdp !== cdp) return;
         this.pushFrame(f.data, f.metadata?.deviceWidth);
       });
-      await cdp.send("Page.startScreencast", { format: "jpeg", quality: 70, everyNthFrame: 1 });
+      await cdp.send("Page.startScreencast", { format: "jpeg", quality: 82, everyNthFrame: 1 });
     } catch (e) {
       log("warn", "screencast failed", (e as Error).message);
     }
@@ -359,7 +359,7 @@ export class Browser {
 
   async screenshot(): Promise<{ jpeg: Buffer; url: string; title: string }> {
     const p = await this.activePage();
-    const jpeg = await p.screenshot({ type: "jpeg", quality: 70, timeout: 15_000 });
+    const jpeg = await p.screenshot({ type: "jpeg", quality: 82, timeout: 15_000 });
     return { jpeg, url: p.url(), title: await p.title().catch(() => "") };
   }
 

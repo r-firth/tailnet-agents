@@ -45,9 +45,9 @@ class Run {
     return this.h.pause(this.t, ms);
   }
 
-  async step(text: string, steps?: number) {
+  async step(text: string, next?: string[]) {
     await this.pause(450);
-    await this.tool("step", { text, ...(steps ? { steps_estimate: steps } : {}) });
+    await this.tool("step", { text, ...(next ? { next } : {}) });
     await this.pause(350);
   }
 
@@ -91,7 +91,14 @@ async function cancel(h: Host, t: TaskRun, r: Run) {
   await r.loginCookie();
   const origin = h.demo.origin;
 
-  await r.step("Check what I already know about this subscription", 7);
+  await r.step("Check what I already know about this subscription", [
+    "Open Polyform billing settings",
+    "Start the cancellation",
+    "Decline the retention offer",
+    'Confirm, then wait for "cancelled"',
+    "Verify the plan end date",
+    "Remember how this went",
+  ]);
   await r.tool("memory_search", { query: "polyform subscription cancel procedure" });
   await r.pause(600);
 
@@ -124,7 +131,7 @@ async function cancel(h: Host, t: TaskRun, r: Run) {
   const end = m?.[1];
   await r.pause(500);
   if (!end) {
-    await r.tool("browser_screenshot");
+    await r.tool("browser_screenshot", { caption: "Cancelled, end date unread" });
     await r.tool("finish", { outcome: "partial", summary: "Polyform shows the subscription as cancelled, but I couldn't read the plan end date. Worth a quick look." });
     return;
   }
@@ -145,7 +152,7 @@ async function cancel(h: Host, t: TaskRun, r: Run) {
   await r.pause(400);
   await r.tool("memory_note", { kind: "subscription", subject: "polyform", text: `Polyform Creator plan (£16/month) is cancelled; access ends ${end} and there are no further charges.` });
   await r.pause(400);
-  await r.tool("browser_screenshot");
+  await r.tool("browser_screenshot", { caption: "Receipt: plan cancelled" });
   await r.tool("finish", {
     outcome: "success",
     summary: `Cancelled your Polyform Creator plan (£16/month). I declined the 50%-off retention offer; you keep access until ${end} and won't be charged again.`,
@@ -182,7 +189,7 @@ async function pay(h: Host, t: TaskRun, r: Run) {
         subject: "polyform",
       };
 
-  await r.step(shop.open, 5);
+  await r.step(shop.open, ["Check the total", "Get approval to pay", "Pay with Visa •••• 4242", "Check the receipt"]);
   await r.must("browser_navigate", { url: shop.start });
   await r.pause(700);
   await r.must("browser_click", { text: shop.next });
@@ -212,7 +219,7 @@ async function pay(h: Host, t: TaskRun, r: Run) {
   const done = await r.must("browser_snapshot");
   const ref = shop.refRe.exec(done.text)?.[0] ?? "unknown";
   await r.tool("memory_note", { kind: "episode", subject: shop.subject, text: `Paid £${total} to ${shop.merchant} for ${shop.what} (ref ${ref}) on Visa 4242.` });
-  await r.tool("browser_screenshot");
+  await r.tool("browser_screenshot", { caption: "Receipt: paid" });
   await r.tool("finish", { outcome: "success", summary: `Paid £${total} to ${shop.merchant} for ${shop.what}. Reference ${ref}; the confirmation is on its way to ryan@example.com.` });
 }
 
@@ -222,7 +229,7 @@ async function install(h: Host, t: TaskRun, r: Run) {
   const Name = name[0].toUpperCase() + name.slice(1);
   const s = (secs: number) => (secs / h.cfg.scriptSpeed).toFixed(3);
 
-  await r.step("Check the machine and what's already installed", 5);
+  await r.step("Check the machine and what's already installed", [`Ask which ${Name} release to install`, `Download ${Name}`, `Unpack into ~/opt/${name}`, "Verify the install"]);
   await r.must("shell", { command: `uname -m && ls ~/opt 2>/dev/null | grep -v '^bin$' || echo "(nothing in ~/opt yet)"` });
   await r.pause(400);
   await r.must("shell", { command: `df -h ~ | tail -1` });
@@ -271,7 +278,7 @@ async function install(h: Host, t: TaskRun, r: Run) {
 
 async function generic(h: Host, t: TaskRun, r: Run) {
   await r.loginCookie();
-  await r.step("Check memory for anything relevant", 4);
+  await r.step("Check memory for anything relevant", ["Look over the machine", "Check the browser works", "Summarise"]);
   await r.tool("memory_search", { query: requestLine(t.brief).slice(0, 200) });
   await r.pause(500);
 

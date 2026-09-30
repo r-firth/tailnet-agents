@@ -1520,17 +1520,27 @@ fn task_text(t: &Task) -> String {
     format!("Task #{} {}: {}. {}", t.num, t.title, t.brief, t.summary.clone().unwrap_or_default())
 }
 
-/// "cancel my meshy sub" → "Cancel my meshy sub"
+/// A short name for a run, used on tiles and in the needs-you strip:
+/// "can you book me the train to edinburgh and pay for it?" → "Book the train to edinburgh".
 pub fn title_from(brief: &str) -> String {
     let line = brief.lines().next().unwrap_or(brief).trim().trim_end_matches(['.', '!', '?']);
-    let mut words: Vec<&str> = line.split_whitespace().collect();
-    if words.first().is_some_and(|w| matches!(w.to_lowercase().as_str(), "can" | "could" | "please" | "pls")) {
+    // The first clause carries the errand; "…and pay for it", "…, then email me" is detail.
+    let lower = line.to_lowercase();
+    let cut = [" and then ", " then ", " and ", ", ", "; ", " so that ", " because "]
+        .iter()
+        .filter_map(|sep| lower.find(sep))
+        .filter(|&i| i >= 12)
+        .min()
+        .unwrap_or(line.len());
+    let mut words: Vec<&str> = line[..cut].split_whitespace().collect();
+    while words.first().is_some_and(|w| matches!(w.to_lowercase().as_str(), "can" | "could" | "would" | "please" | "pls" | "you" | "hey" | "familiar,")) {
         words.remove(0);
-        if words.first().is_some_and(|w| w.eq_ignore_ascii_case("you")) {
-            words.remove(0);
-        }
     }
-    let mut title = words.into_iter().take(9).collect::<Vec<_>>().join(" ");
+    // "book me the train" → "book the train"
+    if words.len() > 2 && words[1].eq_ignore_ascii_case("me") {
+        words.remove(1);
+    }
+    let mut title = words.into_iter().take(6).collect::<Vec<_>>().join(" ");
     if let Some(first) = title.get(0..1) {
         title = first.to_uppercase() + &title[1..];
     }
@@ -1626,5 +1636,8 @@ mod tests {
     fn titles() {
         assert_eq!(title_from("can you cancel my meshy sub?"), "Cancel my meshy sub");
         assert_eq!(title_from("Install Blender"), "Install Blender");
+        assert_eq!(title_from("book me the train to edinburgh and pay for it"), "Book the train to edinburgh");
+        assert_eq!(title_from("install blender on my machine"), "Install blender on my machine");
+        assert_eq!(title_from("please download my hetzner invoices for september, then email them to accounts"), "Download my hetzner invoices for september");
     }
 }
