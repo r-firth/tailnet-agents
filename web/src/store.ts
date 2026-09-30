@@ -82,9 +82,19 @@ const seen = new Map<string, Set<number>>();
 function addEvents(taskId: string, evs: TaskEvent[], replace = false) {
   let set = seen.get(taskId);
   if (!set || replace) { set = new Set(); seen.set(taskId, set); }
-  const cur = replace ? [] : state.events[taskId] || [];
+  let cur = replace ? [] : state.events[taskId] || [];
+  // The server rewrites an event in place (a tool call completing, a step
+  // finishing) and re-sends it with the same id: replace it.
+  const updates = replace ? [] : evs.filter((e) => set!.has(e.id));
+  if (updates.length) {
+    const byId = new Map(updates.map((e) => [e.id, e]));
+    cur = cur.map((e) => byId.get(e.id) ?? e);
+  }
   const add = evs.filter((e) => !set!.has(e.id));
-  if (!add.length && !replace) return;
+  if (!add.length && !replace) {
+    if (updates.length) state = { ...state, events: { ...state.events, [taskId]: cur } };
+    return;
+  }
   add.forEach((e) => set!.add(e.id));
   let next = cur.concat(add);
   if (add.some((e, i) => (i === 0 ? cur.length && e.id < cur[cur.length - 1].id : e.id < add[i - 1].id))) next = next.sort((a, b) => a.id - b.id);
@@ -98,7 +108,7 @@ export async function loadTask(taskId: string): Promise<void> {
   loading.add(taskId);
   try {
     const r = await api.get<{ task: Task; events: TaskEvent[] }>(`/tasks/${encodeURIComponent(taskId)}`);
-    const merged = [...(r.events || []), ...(state.events[taskId] || [])];
+    const merged = [...(state.events[taskId] || []), ...(r.events || [])];
     const byId = new Map(merged.map((e) => [e.id, e]));
     seen.delete(taskId);
     addEvents(taskId, [...byId.values()].sort((a, b) => a.id - b.id), true);
@@ -167,6 +177,7 @@ function handle(msg: ServerMsg) {
       break;
     }
     case 'event': addEvents(msg.event.task_id, [msg.event]); emit(); break;
+    case 'machine.removed': { const { [msg.id]: _gone, ...rest } = state.machines; state = { ...state, machines: rest }; emit(); break; }
     case 'machine': state = { ...state, machines: { ...state.machines, [msg.machine.id]: msg.machine }, hist: { ...state.hist, [msg.machine.id]: pushHist(state.hist[msg.machine.id], msg.machine) } }; emit(); break;
     case 'needs_you': {
       const ids = new Set(msg.items.map((n) => n.id));

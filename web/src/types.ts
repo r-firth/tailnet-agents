@@ -175,6 +175,7 @@ export type ServerMsg =
   | { type: 'task'; task: Task }
   | { type: 'event'; event: TaskEvent }
   | { type: 'machine'; machine: Machine }
+  | { type: 'machine.removed'; id: string }
   | { type: 'needs_you'; items: NeedsYou[] }
   | { type: 'message'; message: Message }
   | { type: 'typing'; on: boolean }

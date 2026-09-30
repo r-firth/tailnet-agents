@@ -678,7 +678,8 @@ button.ev-i:hover{border-color:var(--line2)}
   .ask .txt{flex:1 1 100%}
   .ask .l1{flex-wrap:wrap;white-space:normal}
   .ask .l2{white-space:normal}
-  .acts{flex-wrap:wrap}
+  .acts{flex-wrap:wrap;min-width:0;max-width:100%}
+  .acts .btn{white-space:normal;height:auto;min-height:32px;text-align:left}
   .ask .qin{flex:1 1 180px;width:auto}
   .desk{padding:10px;gap:10px}
   .focus{padding:10px}

@@ -177,6 +177,9 @@ impl Hub {
                 }
                 "Machine" => {
                     if let Ok(mut m) = serde_json::from_value::<Machine>(json) {
+                        if m.parent.is_some() {
+                            continue; // forks are throwaway
+                        }
                         m.status = "offline".into();
                         m.task_id = None;
                         st.machines.insert(m.id.clone(), m);
@@ -546,9 +549,17 @@ impl Hub {
             let Some(m) = st.machines.get_mut(id) else { return };
             m.status = "offline".into();
             let orphan = m.task_id.take();
-            (m.clone(), orphan)
+            let m = m.clone();
+            if m.parent.is_some() {
+                st.machines.remove(id);
+            }
+            (m, orphan)
         };
-        self.emit(json!({"type": "machine", "machine": m}));
+        if m.parent.is_some() {
+            self.emit(json!({"type": "machine.removed", "id": m.id}));
+        } else {
+            self.emit(json!({"type": "machine", "machine": m}));
+        }
         if let Some(t) = orphan {
             if self.task(&t).is_some_and(|t| !t.status.finished()) {
                 self.fail_task(&t, "The machine disconnected mid-task. The next run will check the real state before retrying.");
@@ -569,32 +580,45 @@ impl Hub {
     /// everything is busy.
     pub fn dispatch(self: &Arc<Self>) {
         loop {
-            let pick = {
+            // (task to start now, machine) or (need more capacity?)
+            let (start, want_fork, busy) = {
                 let st = self.state.lock().unwrap();
-                let Some(task) = st.tasks.values().filter(|t| t.status == TaskStatus::Queued).min_by_key(|t| t.num).cloned() else { return };
                 let links = self.machine_links.lock().unwrap();
-                // Prefer the personal machine (no parent), then forks.
-                let idle = st
-                    .machines
-                    .values()
-                    .filter(|m| m.status == "online" && m.task_id.is_none() && links.contains_key(&m.id))
-                    .min_by_key(|m| (m.parent.is_some(), m.id.clone()))
-                    .cloned();
+                let personal_up = st.machines.values().any(|m| m.parent.is_none() && links.contains_key(&m.id));
+                let idle: Vec<&Machine> = st.machines.values().filter(|m| m.status == "online" && m.task_id.is_none() && links.contains_key(&m.id)).collect();
+                let mut queued: Vec<&Task> = st.tasks.values().filter(|t| t.status == TaskStatus::Queued).collect();
+                queued.sort_by_key(|t| t.num);
+                let mut start = None;
+                let mut want_fork = false;
+                for t in &queued {
+                    // Installs and set-up land on the personal machine so they
+                    // persist; everything else may use a fork.
+                    let setup = is_setup(&t.brief);
+                    let pick = idle.iter().filter(|m| !setup || m.parent.is_none()).min_by_key(|m| (m.parent.is_some(), m.id.clone()));
+                    if let Some(m) = pick {
+                        start = Some(((*t).clone(), (*m).clone()));
+                        break;
+                    }
+                    if !setup || !personal_up {
+                        want_fork = true;
+                    }
+                }
                 let busy = st.machines.values().filter(|m| links.contains_key(&m.id)).count();
-                (task, idle, busy)
+                (start, want_fork, busy)
             };
-            match pick {
-                (task, Some(machine), _) => self.start_on(&task, &machine),
-                (_task, None, busy) => {
-                    // Everything busy (or nothing running): the launcher decides
-                    // whether to wake the personal machine or fork it.
-                    let launcher = self.launcher.clone();
-                    let hub = self.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = launcher.ensure_capacity(&hub, busy).await {
-                            tracing::warn!("no machine available: {e:#}");
-                        }
-                    });
+            match start {
+                Some((task, machine)) => self.start_on(&task, &machine),
+                None => {
+                    if want_fork {
+                        // The launcher wakes the personal machine or forks it.
+                        let launcher = self.launcher.clone();
+                        let hub = self.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = launcher.ensure_capacity(&hub, busy).await {
+                                tracing::warn!("no machine available: {e:#}");
+                            }
+                        });
+                    }
                     return;
                 }
             }
@@ -960,7 +984,6 @@ impl Hub {
                     allow_text: msg["allow_text"].as_bool().unwrap_or(true),
                     created_at: now(),
                     merchant: None,
-                    telegram: None,
                 });
             }
             "approval" => {
@@ -999,7 +1022,6 @@ impl Hub {
                     allow_text: false,
                     created_at: now(),
                     merchant: Some(merchant),
-                    telegram: None,
                 });
             }
             "spend" => {
@@ -1019,12 +1041,8 @@ impl Hub {
                         let evidence = self.state.lock().unwrap().last_event.get(&task_id).copied();
                         let label = self.task(&task_id).map(|t| format!("Task #{}", t.num)).unwrap_or_else(|| "agent".into());
                         match self.add_claim(&kind, &text, &subject, key, msg["confidence"].as_f64().unwrap_or(0.85), 0.6, ClaimSource { task_id: Some(task_id.clone()), message_id: None, event_id: evidence, label }) {
-                            Ok(c) => {
-                                if !task_id.is_empty() {
-                                    self.add_event(&task_id, "memory", "memory.write", obj(json!({"op": if c.supersedes.is_some() {"supersede"} else {"add"}, "text": c.text, "claim_kind": c.kind, "claim_id": c.id}))).ok();
-                                }
-                                json!({"ok": true, "result": {"id": c.id}})
-                            }
+                            // agentd records the memory.write on the timeline itself.
+                            Ok(c) => json!({"ok": true, "result": {"id": c.id, "claim": c}}),
                             Err(e) => json!({"ok": false, "result": e.to_string()}),
                         }
                     }
@@ -1479,9 +1497,11 @@ impl Hub {
         out
     }
 
-    pub fn embed_sender(&self) -> mpsc::UnboundedSender<(u64, Input)> {
-        self.embed_tx.clone()
-    }
+}
+
+fn is_setup(brief: &str) -> bool {
+    let b = brief.to_lowercase();
+    ["install", "set up", "setup", "configure", "log in", "login", "sign in"].iter().any(|w| b.contains(w))
 }
 
 pub fn obj(v: Value) -> Map<String, Value> {

@@ -143,10 +143,13 @@ export class Browser {
       viewport: null,
       ignoreDefaultArgs: ["--enable-automation"], // no "controlled by automated test software" bar in the desktop view
       locale: "en-GB",
+      env: { ...process.env, GOOGLE_API_KEY: "no", GOOGLE_DEFAULT_CLIENT_ID: "no", GOOGLE_DEFAULT_CLIENT_SECRET: "no" } as Record<string, string>,
       timezoneId: process.env.TZ || "Europe/London",
       args: [
         "--no-first-run",
         "--no-default-browser-check",
+        "--hide-crash-restore-bubble",
+        "--test-type", // no "unsupported command-line flag" infobar in the desktop view
         "--disable-dev-shm-usage",
         "--disable-component-update",
         "--password-store=basic",

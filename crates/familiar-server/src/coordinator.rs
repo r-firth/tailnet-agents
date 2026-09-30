@@ -2,7 +2,7 @@
 //! memory when it can and starts tasks on machines when hands-on work is needed.
 //! Backends: an OpenRouter chat model with tools, or a rule-based fallback so
 //! the product works with no keys.
-use crate::hub::{Hub, Inbound, obj};
+use crate::hub::{Hub, Inbound};
 use crate::model::{ClaimSource, Message, gbp};
 use anyhow::{Context, Result, bail};
 use base64::Engine;
@@ -332,10 +332,8 @@ pub async fn mock_turn(hub: &Arc<Hub>, inbound: &Inbound) -> Result<String> {
     let looks_like_task = TASK_WORDS.iter().any(|w| first_words.contains(w)) || lower.starts_with("can you") || lower.starts_with("please") || lower.starts_with("could you");
     if looks_like_task {
         let executor = if lower.contains("use codex") || lower.contains("with codex") { Some("codex") } else if lower.contains("use claude") || lower.contains("with claude") { Some("claude") } else { inbound.executor.as_deref() };
-        let memory = hub.context_packet_async(text, 5).await;
         // Memory travels to the machine in task.start's context, not in the brief.
         let t = hub.create_task(text, Some(&crate::hub::title_from(text)), executor, &inbound.message.channel, Some(inbound.message.id.clone()))?;
-        hub.add_event(&t.id, "memory", "memory.recall", obj(json!({"query": text, "hits": memory.iter().map(|c| json!({"id": c["id"], "score": c["score"], "text": c["text"], "kind": c["kind"], "source": c["source"]["label"]})).collect::<Vec<_>>() }))).ok();
         let exec = match t.executor.as_str() {
             "claude" => "Claude Code",
             "codex" => "Codex",

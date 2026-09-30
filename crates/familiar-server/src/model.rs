@@ -161,8 +161,6 @@ pub struct NeedsYou {
     pub created_at: String,
     #[serde(skip)]
     pub merchant: Option<String>,
-    #[serde(skip)]
-    pub telegram: Option<(i64, i64)>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]

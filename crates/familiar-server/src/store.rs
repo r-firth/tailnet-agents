@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use vecgra::{Database, DatabaseOptions, Direction, EdgeFilter, ElementRef, Value as V, VectorTarget};
 
@@ -23,7 +23,6 @@ struct NodeRec {
 
 pub struct Store {
     db: Database,
-    pub dir: PathBuf,
     keys: HashMap<String, u64>,
     nodes: HashMap<u64, NodeRec>,
 }
@@ -87,7 +86,7 @@ impl Store {
             }
         }
         loaded.sort_by_key(|l| l.id);
-        Ok((Self { db, dir: dir.to_owned(), keys, nodes }, loaded))
+        Ok((Self { db, keys, nodes }, loaded))
     }
 
     pub fn id_of(&self, key: &str) -> Option<u64> {
