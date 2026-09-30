@@ -88,12 +88,13 @@ export const TOOLS: ToolDef[] = [
   {
     name: "finish",
     description:
-      "End the task. outcome is success|partial|failed. The summary is shown to the user. A screenshot of the current page is attached as the receipt. Optionally include a reusable procedure (skill) you learned.",
+      "End the task. outcome is success|partial|failed. `answer` is posted to the user in chat as your reply, so put the actual result there (the list, numbers, links, what was bought), not a description of how you got it. `summary` is one line for the run's log. A screenshot of the current page is attached as the receipt. Optionally include a reusable procedure (skill) you learned.",
     inputSchema: {
       type: "object",
       properties: {
         outcome: { type: "string", enum: ["success", "partial", "failed"] },
-        summary: str("one or two sentences for the user"),
+        answer: str("the result itself, as the user asked for it, in short markdown (e.g. the 10 repos with links). Required whenever the task asked for information."),
+        summary: str("one line: what happened and what was verified"),
         skill_name: str("optional short name for the learned procedure"),
         procedure: str("optional markdown steps that would let you do this faster next time"),
         spent_gbp: num("money actually charged during this task, in pounds (0 if nothing was paid)"),
@@ -109,4 +110,4 @@ export const TOOL_GUIDANCE = `You are working on the user's personal Familiar ma
 - Use browser_* tools for the web: browser_navigate, then browser_snapshot to get refs, then browser_click / browser_type with those refs. Chrome keeps the user's logins.
 - Call memory_search first for anything about the user's accounts, preferences or past procedures; call memory_note for durable facts you learn (and kind=procedure for a reusable recipe).
 - Ask with ask_user only when a real choice is needed. Before ANY payment, purchase or booking call request_approval and obey the result.
-- When done, call finish(outcome, summary). Keep summaries short, specific and honest; say what was verified.`;
+- When done, call finish(outcome, answer, summary). answer is what the user reads as your reply: give them the actual result they asked for, not how you got it. Plain text you write outside tools is not sent to the user.`;

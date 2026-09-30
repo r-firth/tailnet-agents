@@ -717,6 +717,20 @@ impl Hub {
                 launcher.after_task(&hub, &m.id).await;
             });
         }
+        if let Some(t) = &t {
+            // Every finished run replies in the conversation, whatever channel it came from.
+            if status != TaskStatus::Cancelled {
+                if let Some(summary) = t.summary.as_deref().filter(|s| !s.trim().is_empty()) {
+                    let head = match status {
+                        TaskStatus::Done if t.outcome.as_deref() == Some("partial") => format!("#{} {} (partly done)", t.num, t.title),
+                        TaskStatus::Done => format!("#{} {}", t.num, t.title),
+                        _ => format!("#{} {} failed", t.num, t.title),
+                    };
+                    let channel = if t.source == "telegram" { "telegram" } else { "web" };
+                    self.add_message("assistant", &format!("**{head}**\n\n{}", summary.trim()), channel, Some(t.id.clone()), t.receipt_artifact.clone()).ok();
+                }
+            }
+        }
         if let Some(t) = t {
             if let Some(summary) = &t.summary {
                 let node = self.state.lock().unwrap().task_nodes.get(&t.id).copied();
@@ -952,8 +966,14 @@ impl Hub {
                     self.save_artifact(Some(&task_id), &bytes, "image/jpeg", json!({"kind": "receipt"}), Some(format!("receipt: {}", msg["summary"].as_str().unwrap_or("")))).ok()
                 });
                 let outcome = msg["outcome"].as_str().unwrap_or("success").to_owned();
-                let summary = msg["summary"].as_str().unwrap_or("Done.").to_owned();
-                self.add_event(&task_id, "agent", "done", obj(json!({"outcome": outcome, "summary": summary, "receipt_artifact": receipt}))).ok();
+                let note = msg["summary"].as_str().unwrap_or("Done.").to_owned();
+                // The answer is what Ryan asked for. Older executors only sent a summary, and
+                // sometimes wrote the real result as a message before finishing, so fall back to that.
+                let answer = msg["answer"].as_str().map(str::trim).filter(|a| !a.is_empty()).map(str::to_owned).or_else(|| {
+                    self.events(&task_id).iter().rev().filter(|e| e.kind == "message" && e.actor == "agent").filter_map(|e| e.str("text")).find(|t| t.len() > note.len().max(200)).map(str::to_owned)
+                });
+                let summary = answer.clone().unwrap_or_else(|| note.clone());
+                self.add_event(&task_id, "agent", "done", obj(json!({"outcome": outcome, "summary": summary, "note": note, "receipt_artifact": receipt}))).ok();
                 let status = if outcome == "failed" { TaskStatus::Failed } else if outcome == "cancelled" { TaskStatus::Cancelled } else { TaskStatus::Done };
                 self.finish_common(&task_id, status, Some(outcome), Some(summary), receipt);
             }

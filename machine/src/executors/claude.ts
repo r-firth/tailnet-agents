@@ -219,7 +219,8 @@ export async function runClaude(h: Host, t: TaskRun): Promise<void> {
   const res = await runJsonl(bin, args, { cwd: h.cfg.home, env, stdin: buildPrompt(h, t, false), signal: t.signal, onJson: (o) => stream.accept(o) });
   if (t.result) return;
   if (res.code === 0 && stream.final?.ok) {
-    await callTool(h, t, "finish", { outcome: "success", summary: truncate(stream.final.text.trim() || "Done.", 1200) });
+    const text = stream.final.text.trim();
+    await callTool(h, t, "finish", { outcome: "success", summary: truncate(text || "Done.", 300), answer: truncate(text, 6000) });
     return;
   }
   throw new ExecutorError(stream.failureMessage(res.stderr, res.code));

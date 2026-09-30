@@ -247,7 +247,8 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         const spent = Math.round(Number(a.spent_gbp) * 100);
         if (spent > task.spentP) host.spend(task, spent - task.spentP);
         closeStep(host, task, outcome === "failed" ? "failed" : "done");
-        task.result = { outcome, summary, receipt, skillName: a.skill_name ? String(a.skill_name) : undefined, procedure: a.procedure ? String(a.procedure) : undefined };
+        const answer = String(a.answer ?? "").trim() || undefined;
+        task.result = { outcome, summary, answer, receipt, skillName: a.skill_name ? String(a.skill_name) : undefined, procedure: a.procedure ? String(a.procedure) : undefined };
         return ok("Task finished. Stop now; do not call further tools.");
       }
       default:

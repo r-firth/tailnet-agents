@@ -43,7 +43,8 @@ export function logRows(evs: TaskEvent[]): LogRow[] {
       case 'control': rows.push({ ...base, tool: e.state === 'taken' ? 'control.take' : 'control.release', target: e.note || (e.state === 'taken' ? 'you have the machine' : 'agent resumes'), result: e.state === 'taken' ? 'paused' : 'ok', actor: 'you' }); break;
       case 'memory.write': rows.push({ ...base, tool: 'memory.write', target: e.text || '', result: e.op || 'add', actor: 'memory' }); break;
       case 'machine': rows.push({ ...base, tool: 'machine', target: e.text || '', result: '', actor: 'machine' }); break;
-      case 'message': rows.push({ ...base, tool: 'message.send', target: `"${e.text || ''}"`, result: 'sent', actor: 'agent' }); break;
+      // The agent's own running commentary. Only the finished answer is sent to you, in chat.
+      case 'message': rows.push({ ...base, tool: 'agent.note', target: `"${e.text || ''}"`, result: '', actor: 'agent' }); break;
       case 'done': rows.push({ ...base, tool: 'finish', target: e.summary || '', result: e.outcome || 'done', actor: 'agent' }); break;
       case 'failed': rows.push({ ...base, tool: 'failed', target: e.error || '', result: 'error', status: 'error', actor: 'machine' }); break;
     }
@@ -167,7 +168,7 @@ export function sayRow(r: LogRow): string {
   if (r.tool === 'answer') return `You answered ${r.target}`;
   if (r.tool.endsWith('.recv')) return 'Brief received';
   if (r.tool === 'machine') return r.target;
-  if (r.tool === 'message.send') return 'Messaged you';
+  if (r.tool === 'agent.note') return 'Noted';
   if (r.tool === 'finish') return 'Finished';
   const now = VERB[r.tool];
   if (!now) return `${r.tool} ${r.target}`.trim();

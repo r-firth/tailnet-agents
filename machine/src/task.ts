@@ -19,6 +19,8 @@ export interface TaskContext {
 export interface TaskResult {
   outcome: "success" | "partial" | "failed";
   summary: string;
+  /** The answer itself (the list, numbers, links), posted to the user as the reply. */
+  answer?: string;
   receipt?: Buffer;
   skillName?: string;
   procedure?: string;

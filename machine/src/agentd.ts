@@ -233,7 +233,7 @@ export class Agentd implements Host {
     } catch (e) {
       log("warn", "could not write skills", e);
     }
-    this.conn.send({ type: "task.done", task_id: task.id, outcome: r.outcome, summary: r.summary, ...(r.receipt ? { receipt_image: r.receipt.toString("base64") } : {}) });
+    this.conn.send({ type: "task.done", task_id: task.id, outcome: r.outcome, summary: r.summary, ...(r.answer ? { answer: r.answer } : {}), ...(r.receipt ? { receipt_image: r.receipt.toString("base64") } : {}) });
     log("info", `task ${task.id} done: ${r.outcome} — ${r.summary}`);
   }
 

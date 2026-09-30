@@ -213,7 +213,8 @@ export function Focus({ task }: { task: Task }) {
           <StepsPanel steps={stepRows} cursor={cursor} task={task} onSeek={seek} driving={driving} />
           <MemoryPanel events={events} cursor={cursor} />
           <MachinePanel m={machine} hist={machine ? s.hist[machine.id] : undefined} task={task} />
-          <TelegramMirror task={task} needs={s.needs} events={events} />
+          {/* Only when a bot is actually set up; otherwise there's no Telegram message to mirror. */}
+          {s.settings.telegram && s.settings.telegram !== 'off' && <TelegramMirror task={task} needs={s.needs} events={events} />}
         </div>
       </div>
     </section>
