@@ -62,7 +62,7 @@ async fn extract(t: &Task, steps: &[String], written: &[(String, String)]) -> Op
     if std::env::var("FAMILIAR_COORDINATOR").is_ok_and(|v| v == "mock") {
         return None;
     }
-    let model = std::env::var("FAMILIAR_COORDINATOR_MODEL").unwrap_or_else(|_| "anthropic/claude-sonnet-4.5".into());
+    let model = std::env::var("FAMILIAR_COORDINATOR_MODEL").unwrap_or_else(|_| "anthropic/claude-opus-5.5".into());
     let base = std::env::var("OPENROUTER_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".into());
     let record = json!({"brief": t.brief, "outcome": t.outcome, "summary": t.summary, "steps": steps, "already_written": written});
     let prompt = format!(

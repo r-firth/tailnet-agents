@@ -78,7 +78,7 @@ Not verified (no account or key here):
 - **gemini-embedding-2 image input:** the request shape is OpenAI-compatible and unconfirmed. If
   OpenRouter rejects it, keyframes fall back to embedding their caption; check the server log for
   "image embedding failed".
-- The OpenRouter model ids `anthropic/claude-sonnet-4.5` and `google/gemini-2.5-flash` (voice).
+- The OpenRouter model ids `anthropic/claude-opus-5.5` and `google/gemini-3.8-flash` (voice).
   Both can be changed in `.env`.
 - **Codex as executor:** flags were checked against the CLI, but it hasn't done a real run.
 - **Real Telegram:** only the fake Bot API was tested; the calls are standard Bot API.

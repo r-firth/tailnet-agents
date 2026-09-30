@@ -45,7 +45,7 @@ impl Coordinator {
             client: reqwest::Client::builder().timeout(Duration::from_secs(120)).build().expect("http"),
             key: if backend == Backend::OpenRouter { key } else { None },
             base: std::env::var("OPENROUTER_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".into()),
-            model: std::env::var("FAMILIAR_COORDINATOR_MODEL").unwrap_or_else(|_| "anthropic/claude-sonnet-4.5".into()),
+            model: std::env::var("FAMILIAR_COORDINATOR_MODEL").unwrap_or_else(|_| "anthropic/claude-opus-5.5".into()),
         }
     }
 
@@ -254,9 +254,8 @@ async fn claude_turn(hub: &Arc<Hub>, inbound: &Inbound) -> Result<String> {
     let mcp = json!({"mcpServers": {"familiar": {"type": "http", "url": format!("http://127.0.0.1:{}/api/mcp", hub.cfg.port), "headers": {"Authorization": format!("Bearer {}", hub.cfg.machine_token)}}}});
     let mut cmd = tokio::process::Command::new(std::env::var("FAMILIAR_CLAUDE_BIN").unwrap_or_else(|_| "claude".into()));
     cmd.args(["-p", &prompt, "--output-format", "json", "--system-prompt", &system, "--tools", "", "--mcp-config", &mcp.to_string(), "--strict-mcp-config", "--allowedTools", "mcp__familiar", "--no-session-persistence"]);
-    if let Ok(model) = std::env::var("FAMILIAR_CLAUDE_MODEL") {
-        cmd.args(["--model", &model]);
-    }
+    let model = std::env::var("FAMILIAR_CLAUDE_MODEL").ok().filter(|m| !m.is_empty()).unwrap_or_else(|| "claude-opus-5-5".into());
+    cmd.args(["--model", &model]);
     cmd.stdin(std::process::Stdio::null()).kill_on_drop(true);
     let out = tokio::time::timeout(Duration::from_secs(240), cmd.output()).await.context("claude timed out")?.context("running claude (is Claude Code installed and logged in?)")?;
     let stdout = String::from_utf8_lossy(&out.stdout);

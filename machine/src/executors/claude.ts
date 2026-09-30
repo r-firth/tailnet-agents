@@ -210,7 +210,7 @@ export async function runClaude(h: Host, t: TaskRun): Promise<void> {
   // bypassPermissions is refused when running as root, so there we pre-approve the tools instead.
   if (process.getuid?.() === 0) args.push("--allowedTools", ...ROOT_ALLOWED);
   else args.push("--permission-mode", "bypassPermissions");
-  if (process.env.FAMILIAR_CLAUDE_MODEL) args.push("--model", process.env.FAMILIAR_CLAUDE_MODEL);
+  args.push("--model", process.env.FAMILIAR_CLAUDE_MODEL || "claude-opus-5-5");
   const stream = new ClaudeStream(h, t);
   // Prompt goes on stdin: no argv limits, and it can't be swallowed by a variadic flag.
   const res = await runJsonl(bin, args, { cwd: h.cfg.home, env, stdin: buildPrompt(h, t, false), signal: t.signal, onJson: (o) => stream.accept(o) });

@@ -287,7 +287,7 @@ async fn transcribe(bytes: &[u8]) -> Result<String> {
     use base64::Engine;
     let key = std::env::var("OPENROUTER_API_KEY").ok().filter(|k| !k.trim().is_empty()).context("no OPENROUTER_API_KEY")?;
     let base = std::env::var("OPENROUTER_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".into());
-    let model = std::env::var("FAMILIAR_TRANSCRIBE_MODEL").unwrap_or_else(|_| "google/gemini-2.5-flash".into());
+    let model = std::env::var("FAMILIAR_TRANSCRIBE_MODEL").unwrap_or_else(|_| "google/gemini-3.8-flash".into());
     let body = json!({"model": model, "messages": [{"role": "user", "content": [
         {"type": "text", "text": "Transcribe this voice note verbatim. Reply with the transcript only."},
         {"type": "input_audio", "input_audio": {"data": base64::engine::general_purpose::STANDARD.encode(bytes), "format": "ogg"}}
