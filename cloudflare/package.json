@@ -1,0 +1,17 @@
+{
+  "name": "familiar-runner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "latest"
+  },
+  "devDependencies": {
+    "wrangler": "latest",
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.6.0"
+  }
+}

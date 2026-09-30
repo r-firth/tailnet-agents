@@ -1,0 +1,23 @@
+// Familiar's Cloudflare runner: one Sandbox (container) per machine, homes
+// backed up to R2 between tasks. UNTESTED: deploy with `npx wrangler deploy`
+// after `npx wrangler r2 bucket create familiar-machines`.
+{
+  "name": "familiar-runner",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./Dockerfile",
+      "instance_type": "standard-3",
+      "max_instances": 4
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "class_name": "Sandbox", "name": "Sandbox" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sandbox"] }],
+  "r2_buckets": [{ "binding": "MACHINES", "bucket_name": "familiar-machines" }]
+  // Secrets: `npx wrangler secret put RUNNER_TOKEN` (the same value as FAMILIAR_CF_TOKEN on the server)
+}

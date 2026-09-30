@@ -1,0 +1,9 @@
+/target
+/data
+/data-*
+.env
+node_modules/
+/web/dist
+/machine/dist
+/cloudflare/.wrangler
+*.log

@@ -1,0 +1,7 @@
+[workspace]
+members = ["crates/familiar-server"]
+resolver = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
