@@ -119,7 +119,7 @@ async fn post_message(State(hub): State<AppState>, Json(body): Json<NewMessage>)
     }
     match hub.add_message("user", body.text.trim(), "web", None, None) {
         Ok(m) => {
-            hub.inbox.send(Inbound { message: m.clone(), executor: body.executor, image: None }).ok();
+            hub.inbox.send(Inbound { message: m.clone(), executor: body.executor, image: None, report_for: None }).ok();
             Json(json!({"message": m})).into_response()
         }
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e),

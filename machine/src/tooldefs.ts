@@ -107,6 +107,7 @@ export const TOOLS: ToolDef[] = [
 export const TOOL_GUIDANCE = `You are working on the user's personal Familiar machine. Use ONLY the "familiar" MCP tools for actions:
 - Call step("…") with a short intent line before each phase of work, so the user can follow along. On the first step, pass next: [...] with the steps you expect after it, and again whenever the plan changes.
 - Use the shell tool for every command (it runs in the terminal the user can watch). The built-in Bash tool is disabled.
+- To look something up (what a project is, news, prices, docs), use native web search and fetch (WebSearch/WebFetch in Claude Code, web search in Codex) and cite links. Use the browser when you need a real page, a login or to act on a site.
 - Use browser_* tools for the web: browser_navigate, then browser_snapshot to get refs, then browser_click / browser_type with those refs. Chrome keeps the user's logins.
 - Call memory_search first for anything about the user's accounts, preferences or past procedures; call memory_note for durable facts you learn (and kind=procedure for a reusable recipe).
 - Ask with ask_user only when a real choice is needed. Before ANY payment, purchase or booking call request_approval and obey the result.

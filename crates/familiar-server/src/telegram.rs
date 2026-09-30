@@ -278,7 +278,7 @@ async fn handle_update(hub: &Arc<Hub>, tg: &Telegram, u: &Value) -> Result<()> {
     }
     let message = hub.add_message("user", &text, "telegram", None, artifact)?;
     tg.call("sendChatAction", json!({"chat_id": chat, "action": "typing"})).await.ok();
-    hub.inbox.send(Inbound { message, executor: None, image }).ok();
+    hub.inbox.send(Inbound { message, executor: None, image, report_for: None }).ok();
     Ok(())
 }
 

@@ -42,7 +42,7 @@ async function recorded<T>(
   tool: string,
   target: string,
   fn: () => Promise<T>,
-  describe: (v: T) => { result: string; status?: "ok" | "error" },
+  describe: (v: T) => { result: string; status?: "ok" | "error"; content?: string },
 ): Promise<T> {
   const call_id = id("c_");
   const actor = toolActor(tool);
@@ -51,7 +51,8 @@ async function recorded<T>(
   try {
     const v = await fn();
     const d = describe(v);
-    host.event(task, { kind: "tool", actor, tool, target, status: d.status ?? "ok", result: d.result, duration_ms: Date.now() - started, call_id });
+    // content (page text, command output) goes to memory; result is the one-line label.
+    host.event(task, { kind: "tool", actor, tool, target, status: d.status ?? "ok", result: d.result, ...(d.content?.trim() ? { content: truncate(d.content, 12_000) } : {}), duration_ms: Date.now() - started, call_id });
     return v;
   } catch (e) {
     const msg = e instanceof AbortedError ? "cancelled" : (e as Error).message.split("\n")[0];
@@ -127,7 +128,7 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
           (r) => {
             const last = r.output.split("\n").filter((l) => l.trim()).pop() ?? "";
             const head = r.timed_out ? `timed out after ${timeout / 1000}s` : `exit ${r.exit_code}`;
-            return { result: truncate(last ? `${head} · ${oneLine(last, 120)}` : head, 200), status: r.exit_code === 0 && !r.timed_out ? "ok" : "error" };
+            return { result: truncate(last ? `${head} · ${oneLine(last, 120)}` : head, 200), status: r.exit_code === 0 && !r.timed_out ? "ok" : "error", content: r.output };
           },
         );
         const text = `${r.output}\n[exit code: ${r.exit_code ?? "none"}${r.timed_out ? ", timed out and interrupted" : ""}]`;
@@ -141,7 +142,7 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         return ok(`Opened ${r.url} — "${r.title}"${r.status && r.status >= 400 ? ` (HTTP ${r.status})` : ""}`, r);
       }
       case "browser_snapshot": {
-        const r = await recorded(host, task, "browser.snapshot", "page", () => b.snapshot(), (r) => ({ result: `${(r.tree.match(/\[ref=/g) ?? []).length} refs · ${r.title}` }));
+        const r = await recorded(host, task, "browser.snapshot", "page", () => b.snapshot(), (r) => ({ result: `${(r.tree.match(/\[ref=/g) ?? []).length} refs · ${r.title}`, content: `${r.title}\n${r.url}\n${r.tree.replace(/ \[ref=[^\]]*\]/g, "")}` }));
         return ok(`Page: ${r.title}\nURL: ${r.url}\n${r.tree}`, { url: r.url, title: r.title });
       }
       case "browser_click": {

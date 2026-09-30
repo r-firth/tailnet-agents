@@ -156,6 +156,7 @@ export async function runCodex(h: Host, t: TaskRun): Promise<void> {
 
   const mcpEnv = `{FAMILIAR_AGENTD_URL=${toml(h.bridge.url)},FAMILIAR_AGENTD_TOKEN=${toml(h.bridge.token)},FAMILIAR_TASK_ID=${toml(t.id)}}`;
   const args = [
+    "--search", // native web search
     "exec",
     "--json",
     "--dangerously-bypass-approvals-and-sandbox",

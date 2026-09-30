@@ -40,6 +40,8 @@ pub struct Inbound {
     pub message: Message,
     pub executor: Option<String>,
     pub image: Option<(Vec<u8>, String)>,
+    /// Set when this turn is a finished run's report for the coordinator to relay, not a message from Ryan.
+    pub report_for: Option<String>,
 }
 
 pub struct Config {
@@ -464,6 +466,13 @@ impl Hub {
             st.store.rewrite(e.id, &e).ok();
             e
         };
+        // Completed tool calls carry what was seen (page text, command output): remember it.
+        if e.kind == "tool" {
+            if let Some(content) = e.str("content").filter(|c| !c.trim().is_empty()) {
+                let text = format!("{} {}\n{}", e.str("tool").unwrap_or(""), e.str("target").unwrap_or(""), content);
+                self.embed_tx.send((e.id, Input::Text(text))).ok();
+            }
+        }
         self.emit(json!({"type": "event", "event": e}));
         Some(e)
     }
@@ -727,7 +736,9 @@ impl Hub {
                         _ => format!("#{} {} failed", t.num, t.title),
                     };
                     let channel = if t.source == "telegram" { "telegram" } else { "web" };
-                    self.add_message("assistant", &format!("**{head}**\n\n{}", summary.trim()), channel, Some(t.id.clone()), t.receipt_artifact.clone()).ok();
+                    // The coordinator relays it in its own voice (and can correct what it said earlier).
+                    let report = Message { id: new_id("rpt"), role: "report".into(), text: format!("{head}\n\n{}", summary.trim()), channel: channel.into(), task_id: Some(t.id.clone()), at: now(), artifact: t.receipt_artifact.clone() };
+                    self.inbox.send(Inbound { message: report, executor: None, image: None, report_for: Some(t.id.clone()) }).ok();
                 }
             }
         }
@@ -1334,6 +1345,71 @@ impl Hub {
             .map(|(score, c)| {
                 let mut v = serde_json::to_value(c).unwrap_or_default();
                 v["score"] = json!((score * 100.0).round() / 100.0);
+                v
+            })
+            .collect()
+    }
+
+    /// What the coordinator gets on every turn: the best matches across everything Familiar has
+    /// recorded (messages, run results, page text, command output, claims), not just claims.
+    pub async fn recall(&self, query: &str, k: usize, skip_messages: &HashSet<String>) -> Vec<Value> {
+        let vector = self.embedder.embed(&[Input::Text(query.to_owned())]).await.ok().and_then(|mut v| v.pop());
+        let st = self.state.lock().unwrap();
+        let mut vec_scores: HashMap<u64, f64> = HashMap::new();
+        if let Some(v) = &vector {
+            if let Ok(hits) = st.store.search(v, &[], 80) {
+                vec_scores.extend(hits.into_iter().map(|(id, s)| (id, s as f64)));
+            }
+        }
+        const STOP: &[&str] = &["the", "and", "for", "you", "can", "what", "about", "tell", "with", "this", "that", "have", "are", "was", "out", "check", "please", "does", "how"];
+        let q = query.to_lowercase();
+        let words: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() > 2 && !STOP.contains(w)).collect();
+        let lexical = |hay: &str| -> f64 {
+            if words.is_empty() {
+                return 0.0;
+            }
+            let hay = hay.to_lowercase();
+            0.6 * words.iter().filter(|w| hay.contains(**w)).count() as f64 / words.len() as f64
+        };
+        let clip = |s: &str, n: usize| if s.chars().count() > n { format!("{}…", s.chars().take(n).collect::<String>()) } else { s.to_owned() };
+        let num = |task_id: &str| st.tasks.get(task_id).map(|t| t.num);
+        let mut out: Vec<(f64, Value)> = Vec::new();
+        for c in st.claims.values().filter(|c| c.state != "forgotten") {
+            let score = vec_scores.get(&c.id).copied().unwrap_or(0.0) + lexical(&format!("{} {}", c.text, c.subject)) + if c.state == "superseded" { -0.25 } else { 0.0 };
+            out.push((score, json!({"type": "memory", "id": c.id, "kind": c.kind, "state": c.state, "at": c.created_at, "text": clip(&c.text, 1500)})));
+        }
+        for (id, m) in &st.messages {
+            if skip_messages.contains(&m.id) {
+                continue;
+            }
+            let score = vec_scores.get(id).copied().unwrap_or(0.0) + lexical(&m.text);
+            let who = if m.role == "user" { "Ryan said" } else { "Familiar said" };
+            out.push((score, json!({"type": who, "id": m.id, "at": m.at, "run": m.task_id.as_deref().and_then(num), "text": clip(&m.text, 2500)})));
+        }
+        for t in st.tasks.values() {
+            let node = st.task_nodes.get(&t.id).copied().unwrap_or(0);
+            let text = format!("#{} {} [{}]: {}", t.num, t.title, t.status.label(), t.summary.as_deref().unwrap_or(&t.brief));
+            let score = vec_scores.get(&node).copied().unwrap_or(0.0) + lexical(&text);
+            out.push((score, json!({"type": "run", "run": t.num, "at": t.created_at, "text": clip(&text, 3000)})));
+        }
+        for list in st.events.values() {
+            for e in list {
+                let text = match e.kind.as_str() {
+                    "tool" => e.str("content").map(|c| format!("{} {}: {}", e.str("tool").unwrap_or(""), e.str("target").unwrap_or(""), c)),
+                    "message" | "step" | "answer" => e.str("text").or(e.str("label")).map(str::to_owned),
+                    _ => None,
+                };
+                let Some(text) = text.filter(|t| !t.trim().is_empty()) else { continue };
+                let score = vec_scores.get(&e.id).copied().unwrap_or(0.0) + lexical(&text);
+                out.push((score, json!({"type": if e.kind == "tool" { "seen in a run" } else { "run note" }, "id": e.id, "at": e.at, "run": num(&e.task_id), "text": clip(&text, 2000)})));
+            }
+        }
+        out.retain(|(s, _)| *s > 0.35);
+        out.sort_by(|a, b| b.0.total_cmp(&a.0));
+        out.into_iter()
+            .take(k)
+            .map(|(s, mut v)| {
+                v["score"] = json!((s * 100.0).round() / 100.0);
                 v
             })
             .collect()
