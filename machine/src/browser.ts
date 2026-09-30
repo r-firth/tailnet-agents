@@ -20,6 +20,8 @@ export function findChrome(): string | undefined {
       candidates.push(path.join("/opt/pw-browsers", d, "chrome-linux", "chrome"));
     }
   }
+  // macOS installs.
+  candidates.push("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium");
   for (const name of ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]) {
     try {
       candidates.push(execFileSync("which", [name], { encoding: "utf8" }).trim() || undefined);
@@ -261,8 +263,17 @@ export class Browser {
   async snapshot() {
     const p = await this.activePage();
     const tree = (await p.evaluate(SNAPSHOT_FN)) as string;
+    this.refLabels.clear();
+    for (const m of tree.matchAll(/- (\S+) "([^"]*)" \[ref=(e\d+)\]/g)) this.refLabels.set(m[3], `${m[1]} "${m[2].slice(0, 50)}"`);
     return { url: p.url(), title: await p.title().catch(() => ""), tree };
   }
+
+  /** Human-readable target for the action log: `e12` → `button "Cancel subscription"`. */
+  describe(target: string): string {
+    const ref = /^\[?(?:ref=)?(e\d+)\]?$/.exec(target.trim());
+    return (ref && this.refLabels.get(ref[1])) || target;
+  }
+  private refLabels = new Map<string, string>();
 
   private async resolve(target: string, kind: "click" | "type"): Promise<Locator> {
     const p = await this.activePage();

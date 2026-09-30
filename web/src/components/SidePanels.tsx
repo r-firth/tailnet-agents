@@ -108,7 +108,7 @@ export function TelegramMirror({ task, needs, events }: { task: Task; needs: Nee
   const est = task.steps_estimate ? `/~${task.steps_estimate}` : '';
   if (task.control === 'you') text = <>Paused: Ryan is driving {machineName(task.machine_id)}. <a href="#" onClick={(e) => e.preventDefault()}>Watch live ›</a></>;
   else if (n) { text = <>{n.kind === 'approval' ? 'Needs your OK: ' : 'Question: '}{n.title}{n.detail && n.kind === 'approval' ? ` (${n.detail.split(' · ')[0]})` : ''}</>; kb = n.options.filter((o) => o.style !== 'quiet').map((o) => o.label).slice(0, 3); }
-  else if (task.status === 'done') text = <>{task.outcome === 'partial' ? '◐ ' : '✓ '}{lastMsg?.text || task.summary}</>;
+  else if (task.status === 'done') text = <>{task.outcome === 'partial' ? '◐ ' : '✓ '}{task.summary || lastMsg?.text}</>;
   else if (task.status === 'failed') text = <>✕ Failed: {task.summary || task.now}</>;
   else if (task.status === 'cancelled') text = <>Cancelled. {task.now}</>;
   else if (task.status === 'queued' || task.status === 'starting') text = <>Starting {task.title} on {machineName(task.machine_id)}…</>;

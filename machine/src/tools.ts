@@ -142,7 +142,7 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
       case "browser_click": {
         const t = targetOf(a);
         if (!t) return err("ref or text is required");
-        const r = await recorded(host, task, "browser.click", t, () => b.click(t), (r) => ({ result: r.title ? `→ ${r.title}` : "clicked" }));
+        const r = await recorded(host, task, "browser.click", b.describe(t), () => b.click(t), (r) => ({ result: r.title ? `→ ${r.title}` : "clicked" }));
         await keyframe(host, task);
         return ok(`Clicked "${r.clicked}". Now on ${r.url} — "${r.title}"`, r);
       }
@@ -152,7 +152,7 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         if (!t) return err("ref or text is required");
         const secret = /pass|secret|token|card|cvc|cvv/i.test(t);
         const shown = secret ? "•".repeat(Math.min(value.length, 8)) : truncate(value, 60);
-        const r = await recorded(host, task, "browser.type", `${t} ← "${shown}"`, () => b.type(t, value, !!a.submit), () => ({ result: a.submit ? "typed and submitted" : "typed" }));
+        const r = await recorded(host, task, "browser.type", `${b.describe(t)} ← "${shown}"`, () => b.type(t, value, !!a.submit), () => ({ result: a.submit ? "typed and submitted" : "typed" }));
         await keyframe(host, task);
         return ok(`Typed into ${t}${a.submit ? " and pressed Enter" : ""}. Now on ${r.url}`, r);
       }

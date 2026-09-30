@@ -883,13 +883,8 @@ impl Hub {
                         }
                     }
                 }
-                if ekind == "message" {
-                    if let Some(text) = ev.get("text").and_then(Value::as_str) {
-                        let text = text.to_owned();
-                        self.add_message("assistant", &text, "task", Some(task_id.clone()), None).ok();
-                        self.tg.send(TgCmd::Say(format!("#{} {}", self.task(&task_id).map(|t| t.num).unwrap_or(0), text))).ok();
-                    }
-                }
+                // Executor narration stays on the timeline; Telegram gets the one
+                // self-editing status message per task, not a stream of chatter.
                 self.add_event(&task_id, &actor, &ekind, ev).ok();
             }
             "frame" => {
