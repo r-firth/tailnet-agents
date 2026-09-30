@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, artifactUrl } from '../api';
-import { hasFrames } from '../bus';
-import { cancelTask, execName, machineName, setControl, setState, useStore } from '../store';
+import { cancelTask, execName, followUp, machineName, newTask, setControl, setState, useStore } from '../store';
 import type { ReplayFrame, Task } from '../types';
 import { logRows, moments as getMoments, steps as getSteps, urlAt, usesBrowser, usesTerminal, type Moment } from '../timeline';
 import { dur, gbp, timeOf, tokens } from '../format';
@@ -9,9 +8,10 @@ import { Pill, Rid, runState, useNow } from './ui';
 import { LiveView, type Tab } from './LiveView';
 import { Filmstrip } from './Filmstrip';
 import { ActionLog } from './ActionLog';
-import { BudgetPanel, MachinePanel, MemoryPanel, StepsPanel, TelegramMirror } from './SidePanels';
+import { MachinePanel, MemoryPanel, StepsPanel, TelegramMirror } from './SidePanels';
+import { Md, stripMd } from '../md';
 import { ignoreKey } from '../keys';
-import { IHand, IStop } from '../icons';
+import { IHand, IRedo, IReply, IStop } from '../icons';
 
 const SOURCE: Record<string, string> = { telegram: 'Telegram', web: 'Web', schedule: 'Schedule', github: 'GitHub' };
 const ENDED = ['done', 'failed', 'cancelled'];
@@ -19,7 +19,7 @@ const ENDED = ['done', 'failed', 'cancelled'];
 function useCells(): number {
   const [w, setW] = useState(() => window.innerWidth);
   useEffect(() => { const f = () => setW(window.innerWidth); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
-  return w < 820 ? 4 : w < 1300 ? 6 : 8;
+  return w < 820 ? 4 : w < 1300 ? 5 : w < 1720 ? 6 : 8;
 }
 
 export function Focus({ task }: { task: Task }) {
@@ -32,17 +32,22 @@ export function Focus({ task }: { task: Task }) {
   const [cursor, setCursor] = useState<number | null>(null);
   const [frames, setFrames] = useState<ReplayFrame[]>([]);
   const [wide, setWide] = useState(false);
+  const [fit, setFit] = useState<'all' | 'width'>('all');
   const [armed, setArmed] = useState(false);
   const cells = useCells();
 
   // default tab per run: browser if it has a browser, terminal for coding runs
   const [tabBy, setTabBy] = useState<Record<string, Tab>>({});
-  const browserish = usesBrowser(events) || hasFrames(task.id) || !!task.last_frame_artifact;
+  // The machine's Chrome streams frames whatever the run is doing, and on a
+  // persistent machine it still shows the last run's page. Only this run's own
+  // browser use makes the browser the default view.
+  const browserish = usesBrowser(events) || !!task.receipt_artifact;
   const autoTab: Tab = browserish ? 'browser' : usesTerminal(events) ? 'terminal' : 'browser';
   const tab = tabBy[task.id] || autoTab;
   const setTab = (t: Tab) => setTabBy((m) => ({ ...m, [task.id]: t }));
 
-  useEffect(() => { setCursor(null); setArmed(false); }, [task.id]);
+  const [openNow, setOpenNow] = useState(false);
+  useEffect(() => { setCursor(null); setArmed(false); setOpenNow(false); }, [task.id]);
   useEffect(() => { if (driving) setCursor(null); }, [driving]);
 
   const start = Date.parse(task.started_at || task.created_at);
@@ -121,6 +126,7 @@ export function Focus({ task }: { task: Task }) {
       } else if (k === 'l') { e.preventDefault(); setCursor(null); }
       else if (k === 't') { e.preventDefault(); if (!ENDED.includes(c.task.status)) setControl(c.task, !c.driving); }
       else if (k === 'f') { e.preventDefault(); setWide((w) => !w); }
+      else if (k === 'z') { e.preventDefault(); setFit((f) => (f === 'all' ? 'width' : 'all')); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -139,16 +145,18 @@ export function Focus({ task }: { task: Task }) {
   } else if (ended) {
     nk = task.status === 'done' ? (task.outcome === 'partial' ? 'Partly' : 'Done') : task.status === 'failed' ? 'Failed' : 'Stopped';
     intent = task.summary || task.now || '';
-    sub = <>ended {timeOf(task.ended_at)} · took {dur(elapsed)}</>;
   } else if (n) {
-    sub = <><span className="wf">{n.kind === 'approval' ? 'waiting for your approval' : 'waiting on your answer'}</span> · {dur(now - Date.parse(n.created_at))}</>;
+    sub = <><span className="wf">{n.kind === 'approval' ? 'waiting for your approval' : 'waiting for your answer'}</span> · {dur(now - Date.parse(n.created_at))}</>;
   } else if (task.waiting_for) {
     const since = curRow?.pending ? start + curRow.ms : now;
     sub = <>waiting for <span className="wf">{task.waiting_for}</span> · {dur(now - since)}</>;
-  } else if (curRow?.pending) {
-    sub = <>{curRow.tool} · {dur(now - (start + curRow.ms))}</>;
   }
 
+  const planned = stepRows.some((r) => r.state === 'pending');
+  const realSteps = stepRows.filter((r) => r.ms != null).length;
+  const stepNow = Math.max(task.step || 0, realSteps);
+  const cap = (task.time_cap_s || 0) * 1000;
+  const capLabel = cap ? (cap >= 3600000 ? `${+(cap / 3600000).toFixed(1)} h` : `${Math.round(cap / 60000)} min`) : '';
   const cls = ['focus', driving ? 'driving' : '', !live ? 'rewound' : '', ended ? 'ended' : '', ended && task.outcome === 'success' ? 'okay' : '', wide ? 'wide' : ''].join(' ');
   return (
     <section className={cls} aria-label={`Run ${task.num}: ${task.title}`}>
@@ -158,26 +166,37 @@ export function Focus({ task }: { task: Task }) {
             <Rid n={task.num} />
             <h1>{task.title}</h1>
             <Pill kind={st.cls}>{st.label}</Pill>
-            <span className="fh-meta">{SOURCE[task.source] || task.source} {timeOf(task.created_at, true)} · {execName(task.executor)} on <b>{machineName(task.machine_id)}</b></span>
+            <span className="fh-meta">{SOURCE[task.source] || task.source} · {timeOf(task.created_at)} · {execName(task.executor)} on <b>{machineName(task.machine_id)}</b></span>
           </div>
-          <div className="fh-2">
+          <div className={`fh-2 ${openNow ? 'open' : ''}`}>
             <span className="nk">{nk}</span>
-            <span className="int" title={intent}>{intent}</span>
-            {sub && <span className="sub">{sub}</span>}
+            <div className="int" role="button" tabIndex={0} title={openNow ? undefined : stripMd(intent)} aria-expanded={openNow}
+              onClick={() => setOpenNow((o) => !o)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenNow((o) => !o); } }}>
+              {ended && live ? <Md text={intent} inlineOnly={!openNow} /> : intent}
+              {sub && <span className="sub">{sub}</span>}
+            </div>
           </div>
         </div>
         <div className="fh-r">
-          <div className="hstat"><small>Step</small><b>{task.step || 0} <i>of ~{task.steps_estimate || '?'}</i></b></div>
-          <div className="hstat"><small>Elapsed</small><b>{dur(elapsed)}</b></div>
-          <div className="hstat"><small>Spend</small><b>{gbp(task.spend_p)} <i>/ {gbp(s.settings.approval_threshold_p, { short: true })} no-ask</i></b></div>
-          <div className="hstat opt"><small>Tokens</small><b>{tokens(task.tokens)}</b></div>
+          {ended
+            ? <div className="hstat"><small>Steps</small><b>{realSteps || task.step || 0}</b></div>
+            : <div className="hstat"><small>Step</small><b>{stepNow} <i>of {task.steps_estimate ? (planned ? '' : '~') + task.steps_estimate : '?'}</i></b></div>}
+          <div className="hstat" title={cap ? `Stops by itself after ${capLabel}` : undefined}><small>{ended ? 'Took' : 'Elapsed'}</small><b>{dur(elapsed)}{cap && !ended ? <i> / {capLabel}</i> : null}</b></div>
+          <div className="hstat" title={`Payments over ${gbp(s.settings.approval_threshold_p, { short: true })} wait for you`}><small>Spend</small><b>{gbp(task.spend_p)} <i>/ {gbp(s.settings.approval_threshold_p, { short: true })} line</i></b></div>
+          <div className="hstat opt" title={task.tokens && !task.spend_p && task.executor !== 'codex' ? 'Tokens on your Claude plan cost nothing extra' : undefined}><small>Tokens</small><b>{task.tokens ? tokens(task.tokens) : <i>none</i>}</b></div>
+          {ended && (
+            <div className="fh-acts">
+              <button className="btn sm" onClick={() => followUp(task)} title="Ask Familiar about this run"><IReply size={13} />Follow up</button>
+              <button className="btn sm ghost" onClick={() => newTask(task.brief, task.executor)} title="Start the same brief again"><IRedo size={13} />Run again</button>
+            </div>
+          )}
           {!ended && (
             <>
               <button className={`ctl ${driving ? 'on' : ''}`} onClick={() => setControl(task, !driving)} title={driving ? 'Hand control back to the agent (T)' : 'Pause the agent and drive the machine yourself (T)'}>
                 <IHand />{driving ? 'Hand back' : 'Take control'} <kbd>T</kbd>
               </button>
-              <button className={`xbtn ${armed ? 'armed' : ''}`} onClick={() => { if (armed) { cancelTask(task); setArmed(false); } else { setArmed(true); setTimeout(() => setArmed(false), 3500); } }} aria-label={armed ? 'Confirm cancel run' : 'Cancel run'} title="Cancel this run">
-                <IStop size={13} />{armed && 'Cancel run?'}
+              <button className={`xbtn ${armed ? 'armed' : ''}`} onClick={() => { if (armed) { cancelTask(task); setArmed(false); } else { setArmed(true); setTimeout(() => setArmed(false), 3500); } }} aria-label={armed ? 'Confirm: stop this run' : 'Stop this run'} title={armed ? 'Click again to stop' : 'Stop this run (asks once more)'}>
+                <IStop size={11} />{armed ? 'Stop run?' : 'Stop'}
               </button>
             </>
           )}
@@ -186,7 +205,7 @@ export function Focus({ task }: { task: Task }) {
       <div className="fb">
         <div className="lc">
           <LiveView task={task} machine={machine} events={events} tab={tab} setTab={setTab} cursor={cursor} replaySrc={replaySrc}
-            replayMoment={cursor == null ? liveMoment : selMoment} url={url} curRow={curRow} elapsed={elapsed} goLive={goLive} wide={wide} setWide={setWide} />
+            replayMoment={cursor == null ? liveMoment : selMoment} url={url} curRow={curRow} elapsed={elapsed} goLive={goLive} wide={wide} setWide={setWide} fit={fit} setFit={setFit} browserUsed={browserish} />
           <Filmstrip moments={moms} selIdx={selIdx} cursor={cursor} elapsed={elapsed} live={live} ended={ended} driving={driving} onPick={pick} onScrub={seek} goLive={goLive} cells={cells} />
           <ActionLog rows={rows} cursor={cursor} curKey={curRow && (cursor != null || curRow.pending) ? curRow.key : null} onSeek={seek} driving={driving} />
         </div>
@@ -194,7 +213,6 @@ export function Focus({ task }: { task: Task }) {
           <StepsPanel steps={stepRows} cursor={cursor} task={task} onSeek={seek} driving={driving} />
           <MemoryPanel events={events} cursor={cursor} />
           <MachinePanel m={machine} hist={machine ? s.hist[machine.id] : undefined} task={task} />
-          <BudgetPanel task={task} settings={s.settings} elapsed={elapsed} tokenHist={s.tokenHist[task.id] || []} />
           <TelegramMirror task={task} needs={s.needs} events={events} />
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LogRow } from '../timeline';
 import { tplus } from '../format';
 
@@ -7,10 +7,11 @@ interface Props { rows: LogRow[]; cursor: number | null; curKey: string | null; 
 export function ActionLog({ rows, cursor, curKey, onSeek, driving }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const [faded, setFaded] = useState(false);
   const live = cursor == null;
   useEffect(() => {
     const el = box.current; if (!el) return;
-    if (live) { if (stick.current) el.scrollTop = el.scrollHeight; return; }
+    if (live) { if (stick.current) el.scrollTop = el.scrollHeight; setFaded(el.scrollTop > 2); return; }
     const cur = el.querySelector<HTMLElement>('.lr.cur') || [...el.querySelectorAll<HTMLElement>('.lr:not(.after)')].pop();
     if (cur) el.scrollTop = Math.max(0, cur.offsetTop - el.offsetTop - el.clientHeight + 40);
   }, [rows.length, cursor, live, curKey]);
@@ -18,7 +19,7 @@ export function ActionLog({ rows, cursor, curKey, onSeek, driving }: Props) {
   return (
     <div className="log">
       <div className="sh">Action log<span className={`aux ${live ? '' : 'rw'}`}>{live ? `${rows.length} calls` : `as of ${tplus(cursor!).replace('.', ':')} · ${before} of ${rows.length}`}</span><span className="sp" /><span className="aux">t+ · tool · target · result · ms</span></div>
-      <div className="lg" ref={box} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24; }}>
+      <div className={`lg ${faded ? 'faded' : ''}`} ref={box} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24; setFaded(el.scrollTop > 2); }}>
         {rows.length === 0 && <div className="none">No tool calls yet.</div>}
         {rows.map((r) => {
           const after = !live && r.ms > cursor!;

@@ -36,6 +36,7 @@ the default executor is Claude Code. See [TURN-ON.md](TURN-ON.md).
 | `image/` | The machine image (Xvfb desktop, noVNC, Chrome, Claude Code, Codex, agentd) |
 | `cloudflare/` | Sandbox SDK Worker: one sandbox per machine, home directory restored from and saved to R2 |
 | `scripts/e2e.mjs` | End-to-end check with a fake Telegram and the scripted executor |
+| `scripts/screens.mjs` | Screenshots of the Desk against the real demo server, light and dark, desktop and phone |
 
 ## How it works
 

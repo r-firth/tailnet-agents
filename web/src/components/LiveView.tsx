@@ -3,11 +3,11 @@ import { getFrame, onFrame } from '../bus';
 import { artifactUrl } from '../api';
 import { machineName, sendInput, setControl, execName } from '../store';
 import type { Machine, Task, TaskEvent } from '../types';
-import type { LogRow, Moment } from '../timeline';
+import { sayRow, type LogRow, type Moment } from '../timeline';
 import { dur, splitUrl, timeOf } from '../format';
 import { Dither } from './Dither';
 import { useTheme } from '../theme';
-import { IBack, IBrowser, IDesktop, IExpand, IFwd, ILock, IGlobe, IReload, IShrink, ITerm, IReceipt } from '../icons';
+import { IBack, IBrowser, IDesktop, IExpand, IFwd, ILock, IGlobe, IReload, IShrink, ITerm, IReceipt, IFitW, IFitAll } from '../icons';
 import { TerminalView } from './TerminalView';
 import { Pill, actorClass } from './ui';
 
@@ -28,7 +28,9 @@ interface Props {
   goLive: () => void;
   wide: boolean;
   setWide: (w: boolean) => void;
-  frameSize?: string;
+  fit: 'all' | 'width';
+  setFit: (f: 'all' | 'width') => void;
+  browserUsed: boolean;           // has this run itself used the browser?
 }
 
 const ended = (t: Task) => t.status === 'done' || t.status === 'failed' || t.status === 'cancelled';
@@ -140,7 +142,7 @@ function MomentCard({ m, task, machine }: { m: Moment | null; task: Task; machin
   if (m.kind === 'memory.recall') {
     return (
       <div className="vstate"><div className="card">
-        <div className="eyebrow"><span className="k memory" />Memory · “{e.query}” · {e.hits?.length ?? 0} hits</div>
+        <div className="eyebrow"><span className="k memory" />Memory · {e.hits?.length ?? 0} recalled for “{e.query}”</div>
         <div className="hits">{(e.hits || []).slice(0, 6).map((h) => <div key={h.id}><b>{h.score.toFixed(2).replace(/^0/, '')}</b><span>{h.text}</span><small>{h.kind || h.source}</small></div>)}</div>
       </div></div>
     );
@@ -164,6 +166,9 @@ export function LiveView(p: Props) {
   const fsz = getFrame(task.id);
   const isEnded = ended(task);
   const fallback = artifactUrl(isEnded ? task.receipt_artifact || task.last_frame_artifact : task.last_frame_artifact) || null;
+  const [peek, setPeek] = useState(false);
+  useEffect(() => setPeek(false), [task.id]);
+  const notYet = !p.browserUsed && !peek && task.status !== 'queued' && task.status !== 'starting';
 
   let view;
   if (tab === 'terminal') {
@@ -177,7 +182,21 @@ export function LiveView(p: Props) {
     view = <iframe className="desktop-frame" src={machine.desktop_url} title={`${machine.name} desktop`} allow="clipboard-read; clipboard-write" />;
   } else {
     let inner;
-    if (!live) {
+    if (notYet && !driving) {
+      inner = (
+        <div className="vstate">
+          <div className="card quiet">
+            <div className="eyebrow"><IBrowser size={12} />Browser</div>
+            <h3>{isEnded ? 'This run never opened the browser' : "This run hasn't opened the browser"}</h3>
+            <p>Chrome on {machineName(task.machine_id)} still shows whatever an earlier run left open, so it stays hidden until this run uses it.</p>
+            <div className="acts3">
+              <button className="btn sm" onClick={() => p.setTab('terminal')}><ITerm size={13} />Open the terminal</button>
+              {!isEnded && <button className="btn sm ghost" onClick={() => setPeek(true)}>Show Chrome anyway</button>}
+            </div>
+          </div>
+        </div>
+      );
+    } else if (!live) {
       inner = p.replaySrc ? <img className="frame" src={p.replaySrc} alt={`Replay at ${dur(cursor!)}`} draggable={false} /> : <MomentCard m={p.replayMoment} task={task} machine={machine} />;
     } else if (isEnded) {
       inner = fallback ? (
@@ -189,7 +208,7 @@ export function LiveView(p: Props) {
       inner = <LiveOrCard task={task} machine={machine} driving={driving} fallback={fallback} moment={p.replayMoment} />;
     }
     view = (
-      <div className={`vp fill ${driving && live ? 'drive' : ''}`}>
+      <div className={`vp fit-${p.fit} ${driving && live ? 'drive' : ''}`}>
         {inner}
       </div>
     );
@@ -221,7 +240,7 @@ export function LiveView(p: Props) {
             </form>
           ) : (
             <div className="url" onClick={() => driving && live && setEditUrl(p.url || '')} title={driving && live ? 'Type an address' : p.url || undefined} style={driving && live ? { cursor: 'text' } : undefined}>
-              {u ? <>{u.secure ? <ILock /> : <IGlobe />}<b>{u.host}</b><span className="p">{u.path}</span></> : <span className="dim">{task.status === 'queued' || task.status === 'starting' ? `${machineName(task.machine_id)} · starting` : 'No page yet'}</span>}
+              {u ? <>{u.secure ? <ILock /> : <IGlobe />}<b>{u.host}</b><span className="p">{u.path}</span></> : <span className="dim">{task.status === 'queued' || task.status === 'starting' ? `${machineName(task.machine_id)} · starting` : notYet ? 'Not used by this run' : 'Not on a page this run opened'}</span>}
             </div>
           )
         ) : (
@@ -236,6 +255,9 @@ export function LiveView(p: Props) {
           ) : (
             <span className="rwb"><Pill kind="replay">Replay</Pill><b className="mono">{dur(cursor!)}</b><span className="wtx">of {dur(p.elapsed)}</span><button className="btn sm" onClick={p.goLive}>{isEnded ? 'Latest' : 'Back to live'}</button></span>
           )}
+          {tab === 'browser' && (
+            <button className="ibtn" onClick={() => p.setFit(p.fit === 'all' ? 'width' : 'all')} aria-label={p.fit === 'all' ? 'Fit the page to the width' : 'Show the whole page'} title={p.fit === 'all' ? 'Fit width, scroll for the rest (Z)' : 'Show the whole page (Z)'}>{p.fit === 'all' ? <IFitW size={13} /> : <IFitAll size={13} />}</button>
+          )}
           <button className="ibtn" onClick={() => p.setWide(!p.wide)} aria-label={p.wide ? 'Show side panels' : 'Widen the view'} title={p.wide ? 'Show side panels (F)' : 'Widen the view (F)'}>{p.wide ? <IShrink size={13} /> : <IExpand size={13} />}</button>
         </span>
       </div>
@@ -249,13 +271,13 @@ export function LiveView(p: Props) {
         </div>
       ) : tab === 'browser' && (
         <div className="vstatus">
-          {p.curRow && !isEnded ? (
-            <span className="cur"><span className={`k ${actorClass(p.curRow.actor)}`} /><b>{p.curRow.tool}</b><span className="tg">{p.curRow.target}</span>{p.curRow.pending ? <span className="pend">{live ? 'running' : 'running at this point'}</span> : p.curRow.result ? <span className="res">→ {p.curRow.result}</span> : null}</span>
-          ) : isEnded ? (
-            <span className="cur"><span className={`rtag ${task.outcome === 'partial' ? 'partial' : task.status !== 'done' || task.outcome === 'failed' ? 'bad' : ''}`}><IReceipt />{task.status === 'done' ? (task.outcome === 'partial' ? 'Partial · proof' : 'Receipt') : task.status === 'cancelled' ? 'Cancelled' : 'Failed'}</span><span className="dim">{task.status === 'done' ? 'final screenshot, taken when the run finished' : 'last frame before it stopped'}</span></span>
-          ) : <span className="cur dim">Idle</span>}
+          {isEnded && live ? (
+            <span className="cur"><span className={`rtag ${task.outcome === 'partial' ? 'partial' : task.status !== 'done' || task.outcome === 'failed' ? 'bad' : ''}`}><IReceipt />{task.status === 'done' ? (task.outcome === 'partial' ? 'Proof so far' : 'Receipt') : task.status === 'cancelled' ? 'Cancelled' : 'Failed'}</span><span className="dim">{task.status === 'done' ? `the page when it finished, ${timeOf(task.ended_at)}` : 'the last frame before it stopped'}</span></span>
+          ) : p.curRow ? (
+            <span className={`cur ${p.curRow.pending && live ? 'busy' : ''}`}><span className={`k ${actorClass(p.curRow.actor)}`} /><span className="say">{sayRow(p.curRow)}</span>{!live && <span className="dim">at {dur(p.curRow.ms)}</span>}</span>
+          ) : <span className="cur dim">{notYet ? 'Nothing in the browser yet' : 'Idle'}</span>}
           <span className="sp" />
-          <span className="dim">{u ? <span className="mob">{u.host}{u.path.length > 1 ? u.path : ''} · </span> : null}{machineName(task.machine_id)} · Chrome{fsz ? ` · ${fsz.w}×${fsz.h}` : ''}</span>
+          <span className="dim">{u ? <span className="mob">{u.host} · </span> : null}{machineName(task.machine_id)} · Chrome{fsz && !notYet ? ` · ${fsz.w}×${fsz.h}` : ''}</span>
         </div>
       )}
     </div>

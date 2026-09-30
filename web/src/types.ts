@@ -74,6 +74,9 @@ export interface TaskEvent {
   summary?: string;
   receipt_artifact?: string | null;
   error?: string;
+  action?: string;      // keyframe: what just happened ("Clicked “Billing”")
+  steps?: string[];     // plan: the steps expected after step `after`
+  after?: number;
 }
 
 export interface NeedsOption { id: string; label: string; style?: 'primary' | 'quiet' | string }

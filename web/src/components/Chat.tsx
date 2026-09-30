@@ -4,6 +4,7 @@ import type { Message } from '../types';
 import { timeOf } from '../format';
 import { ISend, ITelegram, IX, IArrowR, IChat } from '../icons';
 import { Mark } from './TopBar';
+import { Md } from '../md';
 
 export const EXECUTORS: { id: string; label: string }[] = [
   { id: '', label: 'Auto' }, { id: 'claude', label: 'Claude Code' }, { id: 'codex', label: 'Codex' }, { id: 'scripted', label: 'Scripted' },
@@ -22,7 +23,11 @@ export function Composer({ autoFocus, placeholder, onSent, big }: { autoFocus?: 
   }, [text]);
   // allow suggestion chips elsewhere to fill the composer
   useEffect(() => {
-    const f = (e: Event) => { setText((e as CustomEvent<string>).detail); ta.current?.focus(); };
+    const f = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      setText(v);
+      requestAnimationFrame(() => { const el = ta.current; if (el) { el.focus(); el.setSelectionRange(v.length, v.length); } });
+    };
     window.addEventListener('familiar:compose', f);
     return () => window.removeEventListener('familiar:compose', f);
   }, []);
@@ -62,7 +67,7 @@ function Bubble({ m }: { m: Message }) {
   const t = m.task_id ? s.tasks[m.task_id] : null;
   return (
     <div className={`bub ${m.role}`}>
-      <div className="tx">{m.text}</div>
+      {m.role === 'assistant' ? <Md className="tx" text={m.text} /> : <div className="tx">{m.text}</div>}
       <div className="mt">
         {m.channel === 'telegram' && <><ITelegram />Telegram ·</>}
         {m.channel === 'web' && <>Web ·</>}

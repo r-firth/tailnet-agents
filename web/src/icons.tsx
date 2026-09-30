@@ -37,3 +37,9 @@ export const IReceipt = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}>
 export const IWhy = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}><circle cx="8" cy="8" r="6" /><path d="M6.3 6.2a1.8 1.8 0 1 1 2.5 1.7c-.5.2-.8.6-.8 1.1v.4M8 11.6h.01" /></svg>;
 export const IEdit = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}><path d="M10.5 2.5l3 3-8 8H2.5v-3z" /></svg>;
 export const ITrash = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9" /></svg>;
+export const IRedo = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" /></svg>;
+export const IReply = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><path d="M6.5 4L2.5 7.5l4 3.5M2.5 7.5h7a4 4 0 0 1 4 4v1" /></svg>;
+export const IKeys = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><rect x="1.5" y="4" width="13" height="8.5" rx="1.5" /><path d="M4 6.8h.01M6.5 6.8h.01M9 6.8h.01M11.5 6.8h.01M5 9.8h6" strokeWidth={1.6} /></svg>;
+export const IFitW = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><path d="M2 3v10M14 3v10M4.5 8h7M6 6.3L4.3 8 6 9.7M10 6.3L11.7 8 10 9.7" /></svg>;
+export const IFitAll = ({ size = 14, ...p }: P) => <svg {...base(size)} {...p}><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M5.5 6.5h5v3h-5z" /></svg>;
+export const IChevron = ({ size = 12, ...p }: P) => <svg {...base(size)} {...p}><path d="M6 4l4 4-4 4" /></svg>;

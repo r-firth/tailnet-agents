@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { openOverlay, saveSettings, useStore } from '../store';
+import { coordinatorLabel, openOverlay, saveSettings, useStore } from '../store';
 import { IX } from '../icons';
 import { EXECUTORS } from './Chat';
 
@@ -42,10 +42,16 @@ export function SettingsView() {
               <input value={add} onChange={(e) => setAdd(e.target.value)} placeholder="Add a merchant…" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addM(); } else if (e.key === 'Backspace' && !add && merchants.length) setMerchants(merchants.slice(0, -1)); }} onBlur={addM} aria-label="Add a merchant" />
             </div>
           </div>
+          {coordinatorLabel(st.coordinator).hint && (
+            <div className="sec">
+              <div><h3>Coordinator model</h3><div className="d">The coordinator is on built-in rules: it starts runs and remembers things, but can't hold a real conversation.</div></div>
+              <div className="setup"><b>To use a model</b>{coordinatorLabel(st.coordinator).hint}, then restart Familiar. With Claude Code logged in on this box, <span className="mono">FAMILIAR_COORDINATOR=claude</span> uses your subscription.</div>
+            </div>
+          )}
           <div className="sec">
             <div><h3>Status</h3><div className="d">Read-only. Set with environment variables on the server.</div></div>
             <div className="ro">
-              <span>Coordinator</span><b>{st.coordinator || '—'}</b>
+              <span>Coordinator</span><b>{coordinatorLabel(st.coordinator).name || '—'}</b>
               <span>Embedder</span><b>{st.embedder || '—'}</b>
               <span>Telegram</span><b>{st.telegram || '—'}</b>
               <span>Backends</span><b>{(st.backends || []).join(', ') || '—'}</b>

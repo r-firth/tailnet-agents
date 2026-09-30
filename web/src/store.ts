@@ -3,7 +3,7 @@ import { api, ApiError, streamUrl } from './api';
 import { pushFrame, pushTerminal, onFirstFrame, hasFrames } from './bus';
 import type { FullState, InputMsg, Machine, Message, NeedsYou, ServerMsg, Settings, Stats, Task, TaskEvent } from './types';
 
-export type Overlay = null | 'memory' | 'machines' | 'settings' | 'newtask' | 'kill';
+export type Overlay = null | 'memory' | 'machines' | 'settings' | 'newtask' | 'kill' | 'keys';
 
 export interface Hist { cpu: number[]; mem: number[]; net: number[] }
 
@@ -153,10 +153,21 @@ function ensureFocus() {
 
 export function focus(id: string | null, pinned = true): void {
   if (id === state.focusId) { if (pinned && !state.focusPinned) setState({ focusPinned: true }); return; }
-  state = { ...state, focusId: id, focusPinned: pinned && !!id };
-  emit();
+  const apply = () => {
+    state = { ...state, focusId: id, focusPinned: pinned && !!id };
+    emit();
+  };
+  // a quick crossfade when you switch runs; automatic follows stay instant
+  if (pinned && state.focusId) transition(apply); else apply();
   sendSubscribe();
   if (id) loadTask(id);
+}
+
+/** Runs a state change inside a view transition where the browser has them (and motion is welcome). */
+export function transition(apply: () => void): void {
+  const d = document as Document & { startViewTransition?: (cb: () => Promise<void>) => unknown };
+  if (!d.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || document.visibilityState !== 'visible') { apply(); return; }
+  d.startViewTransition(() => new Promise<void>((resolve) => { apply(); requestAnimationFrame(() => requestAnimationFrame(() => resolve())); }));
 }
 
 function handle(msg: ServerMsg) {
@@ -272,6 +283,7 @@ async function act<T>(p: Promise<T>, ok?: string): Promise<T | undefined> {
 }
 
 export async function answer(n: NeedsYou, optionId: string, label: string, text?: string) {
+  if (state.answered[n.id]) return;
   setState((s) => ({ answered: { ...s.answered, [n.id]: label } }));
   const r = await act(api.post('/answer', { question_id: n.id, answer: optionId, ...(text ? { text } : {}) }));
   if (r === undefined) setState((s) => { const a = { ...s.answered }; delete a[n.id]; return { answered: a }; });
@@ -329,6 +341,11 @@ export function seekTo(taskId: string, ms: number) {
   setState({ seek: { taskId, ms, nonce: Date.now() } });
 }
 
+export function followUp(t: Task) {
+  openChat(true);
+  setTimeout(() => window.dispatchEvent(new CustomEvent('familiar:compose', { detail: `About run ${t.num} (${t.title}): ` })), 30);
+}
+
 export function openChat(open = true) { setState({ chatOpen: open, unread: open ? 0 : state.unread, paletteOpen: false }); }
 export function openOverlay(o: Overlay, extra: Partial<AppState> = {}) { setState({ overlay: o, paletteOpen: false, ...extra }); }
 
@@ -338,5 +355,23 @@ export function machineName(id: string | null | undefined): string {
   return state.machines[id]?.name || id.replace(/^m_/, '');
 }
 export function execName(e: string | null | undefined): string {
-  return e === 'codex' ? 'Codex' : e === 'scripted' ? 'Scripted' : e === 'claude' ? 'Claude Code' : e ? e : 'Auto';
+  return e === 'codex' ? 'Codex' : e === 'scripted' ? 'Demo script' : e === 'claude' ? 'Claude Code' : e ? e : 'Auto';
+}
+
+/** "built-in rules (set OPENROUTER_API_KEY or …)" → { name: "Built-in rules", hint: "Set OPENROUTER_API_KEY or …" } */
+export function coordinatorLabel(raw: string | null | undefined): { name: string; hint: string | null } {
+  if (!raw) return { name: '', hint: null };
+  const m = /^(.*?)\s*\((.*)\)\s*$/.exec(raw);
+  const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+  if (!m) return { name: cap(raw.replace(/^openrouter:/, '')), hint: null };
+  const hint = m[2];
+  // "(your subscription)" is a description, "(set …)" is something to do
+  return /^set /i.test(hint) ? { name: cap(m[1]), hint: cap(hint) } : { name: `${cap(m[1])}, ${hint}`, hint: null };
+}
+
+/** What a question or approval is asking, split so the ask itself is short: "Blender 4.5 LTS or 4.6?" + the rest. */
+export function splitAsk(title: string): { ask: string; more: string } {
+  const i = title.indexOf('? ');
+  if (i > 0 && i < 90) return { ask: title.slice(0, i + 1), more: title.slice(i + 2).trim() };
+  return { ask: title, more: '' };
 }

@@ -53,17 +53,18 @@ export function Filmstrip({ moments, selIdx, cursor, elapsed, live, ended, drivi
               const sel = live ? i === n - 1 && !ended : i === selIdx;
               const after = !live && i > selIdx;
               return (
-                <button key={m.key} className={`fs-c ${sel ? 'sel' : ''} ${after ? 'after' : ''}`} onClick={() => onPick(i)} disabled={driving} aria-label={`Rewind to ${dur(m.ms)}: ${m.label}`} title={`${dur(m.ms)} · ${m.label}${m.detail ? ' · ' + m.detail : ''}`}>
+                <button key={m.key} className={`fs-c ${sel ? 'sel' : ''} ${after ? 'after' : ''}`} onClick={() => onPick(i)} disabled={driving} aria-label={`Rewind to ${dur(m.ms)}: ${m.label}`} title={`${dur(m.ms)} · ${m.label}${m.detail && m.detail !== m.label ? '\n' + m.detail : ''}`}>
                   <span className="th">
-                    {m.artifact ? <img src={artifactUrl(m.artifact)} alt="" loading="lazy" /> : <span className="ev"><b>{m.label}</b>{m.detail}</span>}
+                    {m.artifact ? <img src={artifactUrl(m.artifact)} alt="" loading="lazy" /> : <span className="ev"><span className="evd">{m.detail}</span></span>}
                   </span>
-                  <span className="fl"><span className={`k ${actorClass(m.actor)}`} /><b>{dur(m.ms)}</b><em>{m.artifact ? m.label.replace(/^[^·]*·\s*/, '') : ''}</em></span>
+                  <span className="fl"><span className={`k ${actorClass(m.actor)}`} /><b>{dur(m.ms)}</b></span>
+                  <span className="fcap">{m.label}</span>
                 </button>
               );
             })}
           </div>
         ) : (
-          <div className="fs-empty">Keyframes and moments collect here as the run goes. Scrub back any time.</div>
+          <div className="fs-empty">Screenshots and moments collect here as the run goes. Scrub back to any of them.</div>
         )}
         <button className={`livebtn ${ended ? (live ? 'ended' : 'back') : live ? 'on' : 'back'}`} onClick={goLive} aria-label={ended ? 'Jump to the end' : 'Back to live'}>
           <span className="dot" /><span>{ended ? (live ? 'Ended' : 'End') : live ? (driving ? 'Paused' : 'Live') : 'Go live'}</span><kbd>L</kbd>

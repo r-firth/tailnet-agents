@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, artifactUrl } from '../api';
-import { activeTasks, finishedTasks, focus, getState, openChat, openOverlay, seekTo, setControl, setState, useStore } from '../store';
+import { activeTasks, answer, finishedTasks, focus, getState, openChat, openOverlay, seekTo, setControl, setState, splitAsk, useStore } from '../store';
 import type { SearchResult } from '../types';
 import { cycleTheme, useTheme } from '../theme';
 import { dayLabel } from '../format';
-import { IBrowser, IChat, IGear, IMemory, IPlus, IPower, ISearch, IServer, ITheme, IHand, IPlay } from '../icons';
+import { IBrowser, IChat, IGear, IMemory, IPlus, IPower, ISearch, IServer, ITheme, IHand, IPlay, ICheck, IKeys } from '../icons';
 
 interface Item { key: string; group: string; title: string; sub?: string; right?: ReactNode; icon?: ReactNode; thumb?: string; danger?: boolean; run: () => void }
 
-const GROUP_ORDER = ['Commands', 'Runs', 'Keyframes', 'Timeline', 'Memory', 'Messages'];
+const GROUP_ORDER = ['Needs you', 'Commands', 'Runs', 'Keyframes', 'Timeline', 'Memory', 'Messages'];
 
 export function Palette() {
   const s = useStore();
@@ -50,7 +50,13 @@ export function Palette() {
     if (focused && ['running', 'waiting', 'starting'].includes(focused.status)) {
       cmds.splice(2, 0, { key: 'c-ctl', group: 'Commands', title: focused.control ? `Hand back ${focused.title}` : `Take control of run ${focused.num}`, icon: <IHand />, right: <kbd>T</kbd>, run: () => setControl(focused, !focused.control) });
     }
+    cmds.push({ key: 'c-keys', group: 'Commands', title: 'Keyboard shortcuts', icon: <IKeys />, right: <kbd>?</kbd>, run: () => openOverlay('keys') });
     cmds.push({ key: 'c-kill', group: 'Commands', title: 'Kill switch', sub: 'cancel every run and stop every machine', icon: <IPower />, danger: true, run: () => openOverlay('kill') });
+    // answer what's waiting without leaving the keyboard
+    const needs: Item[] = st.needs.filter((n) => !st.answered[n.id]).flatMap((n) => n.options.map((o) => ({
+      key: `n-${n.id}-${o.id}`, group: 'Needs you', title: `${o.label}`, sub: `${n.kind === 'question' ? splitAsk(n.title).ask : n.title} · run ${n.task_num}`,
+      icon: <ICheck />, run: () => answer(n, o.id, o.label),
+    })));
     const act = activeTasks(st);
     const runs: Item[] = [...act, ...finishedTasks(st)].map((t, i) => ({
       key: 'r-' + t.id, group: 'Runs', title: `${t.num} · ${t.title}`, sub: t.status === 'done' || t.status === 'failed' || t.status === 'cancelled' ? (t.summary || t.status) : t.now || t.status,
@@ -58,7 +64,7 @@ export function Palette() {
     }));
     const ql = q.trim().toLowerCase();
     const match = (it: Item) => !ql || `${it.group} ${it.title} ${it.sub || ''}`.toLowerCase().includes(ql);
-    const out: Item[] = [...cmds.filter(match), ...runs.filter(match).slice(0, ql ? 6 : 8)];
+    const out: Item[] = [...needs.filter(match), ...cmds.filter(match), ...runs.filter(match).slice(0, ql ? 6 : 8)];
     const seen = new Set(out.map((x) => x.key));
     for (const r of results) {
       const t = r.task_id ? st.tasks[r.task_id] : null;
@@ -73,7 +79,7 @@ export function Palette() {
       if (it) out.push(it);
     }
     return out.sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
-  }, [q, results, mode, s.tasks]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, results, mode, s.tasks, s.needs, s.answered]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setSel((x) => Math.min(x, Math.max(0, items.length - 1))); }, [items.length]);
   useEffect(() => { list.current?.querySelector('.it.on')?.scrollIntoView({ block: 'nearest' }); }, [sel]);

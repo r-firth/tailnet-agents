@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { activeTasks, focus, getState, openChat, openOverlay, setState, useStore } from './store';
+import { activeTasks, finishedTasks, focus, getState, openChat, openOverlay, setState, useStore } from './store';
 import { ignoreKey } from './keys';
 import { useTheme } from './theme';
 import { TopBar } from './components/TopBar';
@@ -16,6 +16,7 @@ import { KillDialog, NewTaskDialog } from './components/Dialogs';
 import { EmptyState } from './components/EmptyState';
 import { Dither } from './components/Dither';
 import { IChat } from './icons';
+import { KeysDialog } from './components/KeysDialog';
 
 function AuthGate() {
   return (
@@ -42,20 +43,35 @@ export function App() {
       else if (k === 'c') { e.preventDefault(); openChat(!st.chatOpen); }
       else if (k === 'm') { e.preventDefault(); openOverlay('memory'); }
       else if (k === '/') { e.preventDefault(); setState({ paletteOpen: true }); }
+      else if (e.key === '?') { e.preventDefault(); openOverlay('keys'); }
+      else if (k === 'j' || k === 'k') {
+        // walk every run, live ones first, like the rail reads
+        e.preventDefault();
+        const all = [...activeTasks(st), ...finishedTasks(st)];
+        if (!all.length) return;
+        const i = all.findIndex((t) => t.id === st.focusId);
+        const next = all[Math.max(0, Math.min(all.length - 1, (i < 0 ? 0 : i) + (k === 'j' ? 1 : -1)))];
+        if (next) focus(next.id);
+      }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, []);
 
+  // the tab says when something is waiting for you
+  const waiting = s.needs.filter((n) => !s.answered[n.id]).length;
+  useEffect(() => { document.title = waiting ? `(${waiting}) Familiar` : 'Familiar'; }, [waiting]);
+
   if (s.authError && !s.loaded) return <AuthGate />;
   const task = s.focusId ? s.tasks[s.focusId] : null;
   const noTasks = s.loaded && Object.keys(s.tasks).length === 0;
+  const others = activeTasks(s).filter((t) => t.id !== s.focusId).length;
 
   return (
     <div className={`app ${s.chatOpen ? 'chat-open' : ''}`}>
       <TopBar />
       <NeedsStrip />
-      <main className="desk">
+      <main className={`desk ${others ? '' : 'solo'}`}>
         {!s.loaded ? (
           <section className="focus"><div className="loading"><Dither w={48} h={12} shape="wave" color="--agent" animate theme={resolved} />Connecting to Familiar…</div></section>
         ) : noTasks || !task ? <EmptyState /> : <Focus key={task.id} task={task} />}
@@ -72,7 +88,8 @@ export function App() {
       {s.overlay === 'settings' && <SettingsView />}
       {s.overlay === 'newtask' && <NewTaskDialog />}
       {s.overlay === 'kill' && <KillDialog />}
-      {s.toast && <div className="toast" role="status" key={s.toast.id}>{s.toast.text}</div>}
+      {s.overlay === 'keys' && <KeysDialog />}
+      <div className="toasts" aria-live="polite">{s.toast && <div className="toast" role="status" key={s.toast.id}>{s.toast.text}</div>}</div>
     </div>
   );
 }

@@ -25,8 +25,8 @@ export function TopBar() {
       <span className="sep" />
       <div className="fleet" aria-label="Fleet summary">
         <span><span className="dot agent" /><b className="num">{act.length}</b>&nbsp;{act.length === 1 ? 'run' : 'runs'} on {machinesUsed} {machinesUsed === 1 ? 'machine' : 'machines'}</span>
-        <span><span className="dot ok" />{working} working</span>
-        <span><span className="dot you" />{waiting} waiting on you</span>
+        <span className={working ? '' : 'zero'}><span className="dot ok" />{working} working</span>
+        <span className={waiting ? '' : 'zero'}><span className="dot you" />{waiting} waiting on you</span>
         {driving && <span className="drv">You're driving {machineName(driving.machine_id)}</span>}
       </div>
       <span className="sp" />
@@ -40,9 +40,9 @@ export function TopBar() {
         {s.unread > 0 && !s.chatOpen && <span className="badge">{s.unread}</span>}
       </button>
       <div className="tgroup">
-        <button className="tbtn icon" onClick={() => openOverlay('memory')} aria-label="Memory" title="Memory (M)"><IMemory /></button>
-        <button className="tbtn icon" onClick={() => openOverlay('machines')} aria-label="Machines" title="Machines"><IServer /></button>
-        <button className="tbtn icon" onClick={() => openOverlay('settings')} aria-label="Settings" title="Settings"><IGear /></button>
+        <button className="tbtn icon" onClick={() => openOverlay('memory')} aria-label="Memory" title="Memory (M)"><IMemory /><span className="wlbl">Memory</span></button>
+        <button className="tbtn icon" onClick={() => openOverlay('machines')} aria-label="Machines" title="Machines"><IServer /><span className="wlbl">Machines</span></button>
+        <button className="tbtn icon" onClick={() => openOverlay('settings')} aria-label="Settings" title="Settings"><IGear /><span className="wlbl">Settings</span></button>
       </div>
       <button className="tbtn" onClick={() => setState({ paletteOpen: true })} aria-label="Open command palette"><ISearch /><span className="lbl">Commands</span> <kbd>⌘K</kbd></button>
       <button className="tbtn" onClick={() => cycleTheme()} aria-label={`Theme: ${mode}. Click to change`} title="Theme: system, light, dark"><ITheme /><span className="lbl">{mode === 'system' ? 'System' : mode === 'light' ? 'Light' : 'Dark'}</span></button>
