@@ -49,9 +49,13 @@ is signed in.
 - **With a full desktop:** build the image (`docker build -f image/Dockerfile -t familiar-machine:latest .`)
   and set `FAMILIAR_MACHINE_BACKEND=docker`. The Desktop tab then shows the machine's whole
   screen through noVNC. Installs live in the `familiar-errands-home` volume and survive rebuilds.
-- **From your phone:** `tailscale serve --bg 4400` on the host, set `FAMILIAR_PUBLIC_URL` to that
-  https URL (Telegram gets "Watch live" buttons) and `FAMILIAR_TOKEN`, then open `/?token=…` once.
-  The Desk installs as an app.
+- **From your phone (tailnet only, not public):** on the host run
+  `tailscale serve --bg --http=4400 http://127.0.0.1:4400`, then open `http://<machine>:4400` from
+  any of your devices (or `--https=4400` for `https://<machine>.<tailnet>.ts.net:4400`, which the
+  Desk needs to install as an app). The setting survives restarts and reboots. Set
+  `FAMILIAR_TAILSCALE_USERS` to your Tailscale login so only you get in, with no token to type, and
+  `FAMILIAR_PUBLIC_URL` to the URL (Telegram gets "Watch live" buttons). Or set `FAMILIAR_TOKEN` and
+  open `/?token=…` once per device.
 - **Cloudflare runners:** `cloudflare/` has the Worker. It needs an account: `npm i`,
   `npx wrangler r2 bucket create familiar-machines`, `npx wrangler secret put RUNNER_TOKEN`,
   `npx wrangler deploy`, then set `FAMILIAR_MACHINE_BACKEND=cloudflare`, `FAMILIAR_CF_WORKER_URL`,

@@ -53,6 +53,16 @@ pub fn router(hub: Arc<Hub>, web_dir: std::path::PathBuf) -> Router {
 }
 
 async fn auth(State(hub): State<AppState>, headers: HeaderMap, Query(q): Query<HashMap<String, String>>, req: Request, next: Next) -> Response {
+    // Through `tailscale serve`, Tailscale says who is asking. With FAMILIAR_TAILSCALE_USERS set,
+    // only those logins get in that way, and they don't need the token.
+    if let Some(login) = headers.get("tailscale-user-login").and_then(|v| v.to_str().ok()) {
+        if let Ok(allowed) = std::env::var("FAMILIAR_TAILSCALE_USERS") {
+            let allowed: Vec<&str> = allowed.split(',').map(str::trim).filter(|l| !l.is_empty()).collect();
+            if !allowed.is_empty() {
+                return if allowed.iter().any(|l| l.eq_ignore_ascii_case(login)) { next.run(req).await } else { (StatusCode::FORBIDDEN, "not on the allowed Tailscale logins").into_response() };
+            }
+        }
+    }
     let Some(token) = hub.cfg.token.as_deref() else { return next.run(req).await };
     let bearer = headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
     let cookie = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()).and_then(|c| c.split(';').find_map(|p| p.trim().strip_prefix("familiar_token=")));
