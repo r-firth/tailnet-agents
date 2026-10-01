@@ -86,6 +86,8 @@ pub struct Hub {
     pub coordinator_label: Mutex<String>,
     /// The user message the coordinator is handling (attribution for MCP tool calls).
     pub current_inbound: Mutex<Option<Inbound>>,
+    /// The coordinator's tool calls this turn, attached to its reply.
+    pub turn_activity: Mutex<Vec<Value>>,
     pub telegram_label: Mutex<String>,
 }
 
@@ -229,6 +231,7 @@ impl Hub {
             launcher,
             coordinator_label: Mutex::new(String::new()),
             current_inbound: Mutex::new(None),
+            turn_activity: Mutex::new(Vec::new()),
             telegram_label: Mutex::new("off".into()),
         });
         hub.check_embedding_profile()?;
@@ -330,7 +333,7 @@ impl Hub {
     // ---------- conversation ----------
 
     pub fn add_message(&self, role: &str, text: &str, channel: &str, task_id: Option<String>, artifact: Option<String>) -> Result<Message> {
-        let m = Message { id: new_id("msg"), role: role.into(), text: text.into(), channel: channel.into(), task_id, at: now(), artifact };
+        let m = Message { id: new_id("msg"), role: role.into(), text: text.into(), channel: channel.into(), task_id, at: now(), artifact, activity: if role == "assistant" { std::mem::take(&mut *self.turn_activity.lock().unwrap()) } else { Vec::new() } };
         let id = {
             let mut st = self.state.lock().unwrap();
             let id = st.store.put("Message", &format!("message:{}", m.id), &m, &[("role", s(role))])?;
@@ -737,7 +740,7 @@ impl Hub {
                     };
                     let channel = if t.source == "telegram" { "telegram" } else { "web" };
                     // The coordinator relays it in its own voice (and can correct what it said earlier).
-                    let report = Message { id: new_id("rpt"), role: "report".into(), text: format!("{head}\n\n{}", summary.trim()), channel: channel.into(), task_id: Some(t.id.clone()), at: now(), artifact: t.receipt_artifact.clone() };
+                    let report = Message { id: new_id("rpt"), role: "report".into(), text: format!("{head}\n\n{}", summary.trim()), channel: channel.into(), task_id: Some(t.id.clone()), at: now(), artifact: t.receipt_artifact.clone(), activity: Vec::new() };
                     self.inbox.send(Inbound { message: report, executor: None, image: None, report_for: Some(t.id.clone()) }).ok();
                 }
             }

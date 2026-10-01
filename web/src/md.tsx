@@ -1,4 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // The small slice of Markdown agents actually write in chat and summaries:
 // paragraphs, "- " / "1. " lists, **bold**, *italic*, `code` and links. It is
@@ -27,9 +29,23 @@ function unflatten(text: string): string {
   return text.replace(/ +- (?=\*\*[^*]+\*\*)/g, '\n- ');
 }
 
+// Full GitHub-flavoured Markdown (tables, headings, code blocks, task lists) for chat and results,
+// as tailnet-agents renders it. react-markdown builds React nodes and skips raw HTML, so it stays safe.
+const MD_COMPONENTS: Components = {
+  a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+  table: ({ children }) => <div className="md-table"><table>{children}</table></div>,
+  strong: ({ children }) => <b>{children}</b>,
+};
+
 export function Md({ text, className, inlineOnly }: { text: string | null | undefined; className?: string; inlineOnly?: boolean }) {
   if (!text) return null;
   if (inlineOnly) return <span className={className}>{inline(text.replace(/\s*\n+\s*/g, ' '))}</span>;
+  return <div className={`md ${className || ''}`}><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{unflatten(text)}</ReactMarkdown></div>;
+}
+
+/** The old hand-rolled block renderer, kept for reference-free callers. */
+export function MdLite({ text, className }: { text: string | null | undefined; className?: string }) {
+  if (!text) return null;
   const lines = unflatten(text).replace(/\r/g, '').split('\n');
   const blocks: ReactNode[] = [];
   let para: string[] = [];

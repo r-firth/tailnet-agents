@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { focus, openChat, sendMessage, useDocked, useStore, getState } from '../store';
-import type { Message } from '../types';
+import type { Activity, Message, Task } from '../types';
 import { timeOf } from '../format';
-import { ISend, ITelegram, IX, IArrowR, IChat } from '../icons';
+import { ISend, ITelegram, IX, IChat } from '../icons';
 import { Mark } from './TopBar';
-import { Md } from '../md';
+import { Md, stripMd } from '../md';
 
 export const EXECUTORS: { id: string; label: string }[] = [
   { id: '', label: 'Auto' }, { id: 'claude', label: 'Claude Code' }, { id: 'codex', label: 'Codex' }, { id: 'scripted', label: 'Scripted' },
@@ -62,18 +62,58 @@ function dayOf(iso: string) {
   return same ? 'Today' : d.toDateString() === y.toDateString() ? 'Yesterday' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+/** What the coordinator did on the way to a reply, as small chips (like tailnet-agents' tool activity). */
+function Acts({ items, live }: { items: Activity[]; live?: boolean }) {
+  const [all, setAll] = useState(false);
+  if (!items.length) return null;
+  const shown = all || live ? items : items.slice(0, 4);
+  return (
+    <div className="acts">
+      {shown.map((a, i) => (
+        <span key={i} className={`act ${a.kind} ${live && i === items.length - 1 ? 'live' : ''}`} title={`${a.label} ${a.detail}`.trim()}>
+          <i />{a.label}{a.detail && <span>{a.detail.replace(/^https?:\/\/(www\.)?/, '')}</span>}
+        </span>
+      ))}
+      {!all && !live && items.length > 4 && <button className="act" onClick={() => setAll(true)}>+{items.length - 4} more</button>}
+    </div>
+  );
+}
+
+/** A live card for the run a message is about: status updates in place, click to watch it. */
+function RunCard({ t }: { t: Task }) {
+  return (
+    <button className="runcard" onClick={() => { focus(t.id); if (window.innerWidth < 820) openChat(false); }} title="Watch this run">
+      <span className="n">#{t.num}</span>
+      <span className="t">{t.title}</span>
+      <span className={`s ${t.status}`}>{t.status === 'done' && t.outcome === 'partial' ? 'partly done' : t.status}</span>
+      {t.now && t.status !== 'done' && <span className="now">{stripMd(t.now)}</span>}
+    </button>
+  );
+}
+
 function Bubble({ m }: { m: Message }) {
   const s = getState();
   const t = m.task_id ? s.tasks[m.task_id] : null;
   return (
     <div className={`bub ${m.role}`}>
+      {m.role === 'assistant' && <Acts items={m.activity ?? []} />}
       {m.role === 'assistant' ? <Md className="tx" text={m.text} /> : <div className="tx">{m.text}</div>}
+      {t && m.role === 'assistant' && <RunCard t={t} />}
       <div className="mt">
         {m.channel === 'telegram' && <><ITelegram />Telegram ·</>}
         {m.channel === 'web' && <>Web ·</>}
         <span>{timeOf(m.at)}</span>
-        {t && <button className="runlink" onClick={() => { focus(t.id); if (window.innerWidth < 820) openChat(false); }}>run {t.num}<IArrowR size={10} /></button>}
       </div>
+    </div>
+  );
+}
+
+/** The reply as it streams in. */
+function Draft({ text, activity }: { text: string; activity: Activity[] }) {
+  return (
+    <div className="bub assistant streaming" aria-live="polite">
+      <Acts items={activity} live={!text} />
+      {text ? <Md className="tx" text={text} /> : <div className="typing" aria-label="Familiar is thinking"><i /><i /><i /></div>}
     </div>
   );
 }
@@ -82,7 +122,7 @@ export function Chat() {
   const s = useStore();
   const docked = useDocked();
   const body = useRef<HTMLDivElement>(null);
-  useEffect(() => { const el = body.current; if (el) el.scrollTop = el.scrollHeight; }, [s.messages.length, s.typing, s.chatOpen]);
+  useEffect(() => { const el = body.current; if (el) el.scrollTop = el.scrollHeight; }, [s.messages.length, s.typing, s.chatOpen, s.draft?.text.length, s.draft?.activity.length]);
   useEffect(() => {
     if (!s.chatOpen || docked) return;
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !getState().paletteOpen && !getState().overlay) openChat(false); };
@@ -108,7 +148,7 @@ export function Chat() {
           const sep = d !== lastDay; lastDay = d;
           return <div key={m.id} style={{ display: 'contents' }}>{sep && <div className="chat-day">{d}</div>}<Bubble m={m} /></div>;
         })}
-        {s.typing && <div className="typing" aria-label="Familiar is typing"><i /><i /><i /></div>}
+        {s.draft ? <Draft text={s.draft.text} activity={s.draft.activity} /> : s.typing && <div className="typing" aria-label="Familiar is typing"><i /><i /><i /></div>}
       </div>
       <div className="chat-f"><Composer autoFocus={!docked} /></div>
     </aside>

@@ -383,7 +383,7 @@ async fn mcp(State(hub): State<AppState>, headers: HeaderMap, Json(body): Json<V
                     let name = req["params"]["name"].as_str().unwrap_or("").to_owned();
                     let args = req["params"]["arguments"].clone();
                     let inbound = hub.current_inbound.lock().unwrap().clone();
-                    let message = inbound.as_ref().map(|i| i.message.clone()).unwrap_or_else(|| crate::model::Message { id: "mcp".into(), role: "user".into(), text: String::new(), channel: "web".into(), task_id: None, at: crate::model::now(), artifact: None });
+                    let message = inbound.as_ref().map(|i| i.message.clone()).unwrap_or_else(|| crate::model::Message { id: "mcp".into(), role: "user".into(), text: String::new(), channel: "web".into(), task_id: None, at: crate::model::now(), artifact: None, activity: Vec::new() });
                     let executor = inbound.and_then(|i| i.executor);
                     Ok(match crate::coordinator::run_tool(&hub, &name, &args, &message, executor.as_deref()).await {
                         Ok(v) => json!({"content": [{"type": "text", "text": v.to_string()}]}),

@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { api, ApiError, streamUrl } from './api';
 import { pushFrame, pushTerminal, onFirstFrame, hasFrames } from './bus';
-import type { FullState, InputMsg, Machine, Message, NeedsYou, ServerMsg, Settings, Stats, Task, TaskEvent } from './types';
+import type { Activity, FullState, InputMsg, Machine, Message, NeedsYou, ServerMsg, Settings, Stats, Task, TaskEvent } from './types';
 
 export type Overlay = null | 'memory' | 'machines' | 'settings' | 'newtask' | 'kill' | 'keys';
 
@@ -32,6 +32,8 @@ export interface AppState {
   toast: { text: string; id: number } | null;
   answered: Record<string, string>; // question_id -> label, optimistic
   framedTick: number;
+  /** The coordinator's reply as it streams in, with what it's doing. */
+  draft: { text: string; activity: Activity[] } | null;
 }
 
 const emptyStats: Stats = { spend_today_p: 0, tokens_today: 0, memory_nodes: 0, runs_today: 0, runs_done_today: 0, working: 0, waiting: 0 };
@@ -40,7 +42,7 @@ const emptySettings: Settings = { approval_threshold_p: 10000, default_executor:
 let state: AppState = {
   conn: 'connecting', loaded: false, authError: false, tasks: {}, machines: {}, needs: [], messages: [], typing: false,
   stats: emptyStats, settings: emptySettings, events: {}, focusId: null, focusPinned: false, seek: null, hist: {}, tokenHist: {},
-  unread: 0, overlay: null, chatOpen: false, paletteOpen: false, memoryClaim: null, toast: null, answered: {}, framedTick: 0,
+  unread: 0, overlay: null, chatOpen: false, paletteOpen: false, memoryClaim: null, toast: null, answered: {}, framedTick: 0, draft: null,
 };
 
 const listeners = new Set<() => void>();
@@ -199,7 +201,8 @@ function handle(msg: ServerMsg) {
     case 'message': {
       if (state.messages.some((m) => m.id === msg.message.id)) break;
       const unread = !state.chatOpen && msg.message.role === 'assistant' ? state.unread + 1 : state.unread;
-      setState({ messages: state.messages.concat(msg.message).slice(-400), unread });
+      const draft = msg.message.role === 'assistant' ? null : state.draft;
+      setState({ messages: state.messages.concat(msg.message).slice(-400), unread, draft });
       if (msg.message.role === 'assistant' && msg.message.task_id && pendingFocusFromChat && msg.message.channel === 'web') {
         pendingFocusFromChat = false;
         const tid = msg.message.task_id;
@@ -207,7 +210,18 @@ function handle(msg: ServerMsg) {
       }
       break;
     }
-    case 'typing': setState({ typing: !!msg.on }); break;
+    case 'typing': setState({ typing: !!msg.on, ...(msg.on ? {} : { draft: null }) }); break;
+    case 'draft': {
+      const d = state.draft ?? { text: '', activity: [] };
+      if (msg.reset) setState({ draft: { ...d, text: '' } });
+      else if (msg.delta) setState({ draft: { ...d, text: d.text + msg.delta } });
+      break;
+    }
+    case 'activity': {
+      const d = state.draft ?? { text: '', activity: [] };
+      setState({ draft: { ...d, activity: d.activity.concat(msg.item) } });
+      break;
+    }
     case 'frame': pushFrame(msg.task_id, msg.data, msg.w, msg.h); break;
     case 'terminal': pushTerminal(msg.task_id, msg.data); break;
     case 'stats': setState({ stats: msg.stats }); break;

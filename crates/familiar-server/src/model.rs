@@ -113,6 +113,9 @@ pub struct Message {
     pub at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact: Option<String>,
+    /// What the coordinator did on the way to this reply (searches, pages read, runs checked).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub activity: Vec<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

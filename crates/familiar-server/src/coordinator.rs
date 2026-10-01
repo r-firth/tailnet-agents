@@ -414,20 +414,93 @@ async fn claude_turn(hub: &Arc<Hub>, inbound: &Inbound) -> Result<String> {
     let prompt = format!("{transcript}\n{}", turn_text(inbound));
     let mcp = json!({"mcpServers": {"familiar": {"type": "http", "url": format!("http://127.0.0.1:{}/api/mcp", hub.cfg.port), "headers": {"Authorization": format!("Bearer {}", hub.cfg.machine_token)}}}});
     let mut cmd = tokio::process::Command::new(std::env::var("FAMILIAR_CLAUDE_BIN").unwrap_or_else(|_| "claude".into()));
-    cmd.args(["-p", &prompt, "--output-format", "json", "--append-system-prompt", &system, "--tools", "WebSearch,WebFetch", "--mcp-config", &mcp.to_string(), "--strict-mcp-config", "--allowedTools", "mcp__familiar", "WebSearch", "WebFetch", "--no-session-persistence"]);
+    cmd.args(["-p", &prompt, "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--append-system-prompt", &system, "--tools", "WebSearch,WebFetch", "--mcp-config", &mcp.to_string(), "--strict-mcp-config", "--allowedTools", "mcp__familiar", "WebSearch", "WebFetch", "--no-session-persistence"]);
     let model = std::env::var("FAMILIAR_CLAUDE_MODEL").ok().filter(|m| !m.is_empty()).unwrap_or_else(|| "claude-opus-5-5".into());
     cmd.args(["--model", &model]);
     // tailnet-agents runs its coordinator at medium effort: fast enough to chat, still careful.
     let effort = std::env::var("FAMILIAR_CLAUDE_EFFORT").ok().filter(|e| !e.is_empty()).unwrap_or_else(|| "medium".into());
     cmd.args(["--effort", &effort]);
-    cmd.stdin(std::process::Stdio::null()).kill_on_drop(true);
-    let out = tokio::time::timeout(Duration::from_secs(240), cmd.output()).await.context("claude timed out")?.context("running claude (is Claude Code installed and logged in?)")?;
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let v: Value = serde_json::from_str(stdout.trim()).with_context(|| format!("claude said: {} {}", stdout.trim(), String::from_utf8_lossy(&out.stderr).trim()))?;
+    cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
+    let mut child = cmd.spawn().context("running claude (is Claude Code installed and logged in?)")?;
+    let stdout = child.stdout.take().context("claude stdout")?;
+    let stderr = child.stderr.take().context("claude stderr")?;
+    let err_task = tokio::spawn(async move {
+        let mut s = String::new();
+        let _ = tokio::io::AsyncReadExt::read_to_string(&mut tokio::io::BufReader::new(stderr), &mut s).await;
+        s
+    });
+    // Stream the reply as it's written, and show each tool call as it happens.
+    let turn = inbound.message.id.clone();
+    hub.turn_activity.lock().unwrap().clear();
+    let read = async {
+        let mut lines = tokio::io::AsyncBufReadExt::lines(tokio::io::BufReader::new(stdout));
+        let mut last = Value::Null;
+        while let Some(line) = lines.next_line().await? {
+            let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+            match v["type"].as_str() {
+                Some("stream_event") => {
+                    let ev = &v["event"];
+                    match ev["type"].as_str() {
+                        // Each assistant message starts a fresh draft; the last one is the reply.
+                        Some("message_start") => hub.emit(json!({"type": "draft", "turn": turn, "reset": true})),
+                        Some("content_block_delta") if ev["delta"]["type"] == "text_delta" => {
+                            hub.emit(json!({"type": "draft", "turn": turn, "delta": ev["delta"]["text"]}));
+                        }
+                        _ => {}
+                    }
+                }
+                Some("assistant") => {
+                    for b in v["message"]["content"].as_array().into_iter().flatten() {
+                        if b["type"] == "tool_use" {
+                            if let Some(a) = describe_tool(b["name"].as_str().unwrap_or(""), &b["input"]) {
+                                hub.turn_activity.lock().unwrap().push(a.clone());
+                                hub.emit(json!({"type": "activity", "turn": turn, "item": a}));
+                            }
+                        }
+                    }
+                }
+                Some("result") => last = v,
+                _ => {}
+            }
+        }
+        anyhow::Ok(last)
+    };
+    let v = match tokio::time::timeout(Duration::from_secs(300), read).await {
+        Ok(r) => r?,
+        Err(_) => {
+            child.kill().await.ok();
+            bail!("claude timed out")
+        }
+    };
+    child.wait().await.ok();
+    hub.emit(json!({"type": "draft", "turn": turn, "done": true}));
+    if v.is_null() {
+        bail!("claude said: {}", err_task.await.unwrap_or_default().trim());
+    }
     if v["is_error"] == true {
         bail!("claude: {}", v["result"].as_str().unwrap_or("error"));
     }
     Ok(v["result"].as_str().unwrap_or("").to_owned())
+}
+
+/// A coordinator tool call as a chip in the chat ("Searched the web for …").
+fn describe_tool(name: &str, input: &Value) -> Option<Value> {
+    let s = |k: &str| input[k].as_str().unwrap_or("").to_owned();
+    let (kind, label, detail) = match name {
+        "WebSearch" => ("search", "Searched the web", s("query")),
+        "WebFetch" => ("fetch", "Read", s("url")),
+        "mcp__familiar__read_task" => ("run", "Checked run", format!("#{}", input["num"])),
+        "mcp__familiar__start_task" => ("start", "Started a run", s("title")),
+        "mcp__familiar__recall" => ("memory", "Searched memory", s("query")),
+        "mcp__familiar__remember" => ("memory", "Remembered", s("text")),
+        "mcp__familiar__forget" => ("memory", "Forgot", format!("#{}", input["id"])),
+        "mcp__familiar__cancel_task" => ("run", "Cancelled run", format!("#{}", input["num"])),
+        "mcp__familiar__answer_question" => ("run", "Answered for you", s("answer")),
+        "mcp__familiar__schedule" => ("start", "Scheduled", s("brief")),
+        "mcp__familiar__kill" => ("run", "Stopped everything", String::new()),
+        _ => return None,
+    };
+    Some(json!({"kind": kind, "label": label, "detail": clip(&detail, 200)}))
 }
 
 const TASK_WORDS: &[&str] = &[

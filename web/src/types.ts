@@ -109,6 +109,7 @@ export interface Machine {
   installs: string[];
 }
 
+export interface Activity { kind: 'search' | 'fetch' | 'run' | 'start' | 'memory' | string; label: string; detail: string }
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -116,6 +117,7 @@ export interface Message {
   channel: 'telegram' | 'web' | string;
   task_id: string | null;
   at: string;
+  activity?: Activity[];
 }
 
 export type ClaimKind = 'fact' | 'preference' | 'rule' | 'procedure' | 'account' | 'subscription' | 'person' | 'episode';
@@ -182,6 +184,8 @@ export type ServerMsg =
   | { type: 'needs_you'; items: NeedsYou[] }
   | { type: 'message'; message: Message }
   | { type: 'typing'; on: boolean }
+  | { type: 'draft'; turn: string; delta?: string; reset?: boolean; done?: boolean }
+  | { type: 'activity'; turn: string; item: Activity }
   | { type: 'frame'; task_id: string; machine_id?: string; data: string; w: number; h: number }
   | { type: 'terminal'; task_id: string; data: string }
   | { type: 'stats'; stats: Stats };
