@@ -72,6 +72,18 @@ export function MachinesView() {
         </div>
         <div className="sheet-b machv">
           {ms.length === 0 ? <div className="empty-note">No machines yet. Start one, or run agentd on any box and it dials in.</div> : <div className="mgrid">{ms.map((m) => <Card key={m.id} m={m} />)}</div>}
+          {s.devices.length > 0 && (
+            <div className="devs">
+              <h3>Tailnet devices <span className="aux">runs can work on these over Tailscale SSH; ask for "… on hserver"</span></h3>
+              <div className="devgrid">
+                {s.devices.slice().sort((a, b) => Number(b.ssh) - Number(a.ssh) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name)).map((d) => (
+                  <div key={d.name} className={`dev ${d.online ? '' : 'off'}`} title={d.dns}>
+                    <span className={`dot ${d.online ? 'on' : ''}`} /><b>{d.name}</b><span className="os">{d.os || '—'}</span>{d.ssh && <span className="ssh">SSH</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

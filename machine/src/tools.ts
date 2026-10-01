@@ -182,6 +182,32 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
           host.update(task, { waiting_for: null });
         }
       }
+      case "computer": {
+        const action = String(a.action ?? "screenshot");
+        const x = Math.round(Number(a.x)), y = Math.round(Number(a.y));
+        const hasXY = Number.isFinite(x) && Number.isFinite(y);
+        const target = action === "type" ? `"${oneLine(String(a.text ?? ""), 60)}"` : action === "key" ? String(a.text ?? "") : hasXY ? `${x},${y}` : "page";
+        const shot = await recorded(host, task, `computer.${action}`, target, async () => {
+          const p = await b.activePage();
+          if (action !== "screenshot" && action !== "type" && action !== "key" && !hasXY) throw new Error(`${action} needs x and y`);
+          switch (action) {
+            case "left_click": await p.mouse.click(x, y); break;
+            case "double_click": await p.mouse.dblclick(x, y); break;
+            case "right_click": await p.mouse.click(x, y, { button: "right" }); break;
+            case "move": await p.mouse.move(x, y); break;
+            case "type": await p.keyboard.type(String(a.text ?? ""), { delay: 15 }); break;
+            case "key": await p.keyboard.press(String(a.text ?? "Enter")); break;
+            case "scroll": await p.mouse.move(x, y); await p.mouse.wheel(Number(a.dx) || 0, Number(a.dy) || 0); break;
+          }
+          if (action !== "screenshot" && action !== "move") await p.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {});
+          await p.waitForTimeout(action === "screenshot" ? 0 : 400);
+          return b.screenshot();
+        }, (s) => ({ result: s.title || s.url }));
+        const image = shot.jpeg.toString("base64");
+        task.lastScreenshot = shot.jpeg;
+        if (action !== "screenshot" && action !== "move") host.event(task, { kind: "keyframe", actor: "browser", image, url: shot.url, title: shot.title, action: `${action.replace("_", " ")} ${target}` });
+        return ok(`${action} done. Now on ${shot.url} — "${shot.title}". Screenshot attached (1280x800).`, { url: shot.url, title: shot.title }, image);
+      }
       case "browser_screenshot": {
         const shot = await recorded(host, task, "browser.screenshot", "page", () => b.screenshot(), (s) => ({ result: s.title || s.url }));
         task.lastScreenshot = shot.jpeg;

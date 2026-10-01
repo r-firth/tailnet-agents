@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { api, ApiError, streamUrl } from './api';
 import { pushFrame, pushTerminal, onFirstFrame, hasFrames } from './bus';
-import type { Activity, FullState, InputMsg, Machine, Message, NeedsYou, ServerMsg, Settings, Stats, Task, TaskEvent } from './types';
+import type { Activity, Device, FullState, InputMsg, Machine, Message, NeedsYou, ServerMsg, Settings, Stats, Task, TaskEvent } from './types';
 
 export type Overlay = null | 'memory' | 'machines' | 'settings' | 'newtask' | 'kill' | 'keys';
 
@@ -34,6 +34,8 @@ export interface AppState {
   framedTick: number;
   /** The coordinator's reply as it streams in, with what it's doing. */
   draft: { text: string; activity: Activity[] } | null;
+  /** Tailnet devices runs can work on over SSH. */
+  devices: Device[];
 }
 
 const emptyStats: Stats = { spend_today_p: 0, tokens_today: 0, memory_nodes: 0, runs_today: 0, runs_done_today: 0, working: 0, waiting: 0 };
@@ -42,7 +44,7 @@ const emptySettings: Settings = { approval_threshold_p: 10000, default_executor:
 let state: AppState = {
   conn: 'connecting', loaded: false, authError: false, tasks: {}, machines: {}, needs: [], messages: [], typing: false,
   stats: emptyStats, settings: emptySettings, events: {}, focusId: null, focusPinned: false, seek: null, hist: {}, tokenHist: {},
-  unread: 0, overlay: null, chatOpen: false, paletteOpen: false, memoryClaim: null, toast: null, answered: {}, framedTick: 0, draft: null,
+  unread: 0, overlay: null, chatOpen: false, paletteOpen: false, memoryClaim: null, toast: null, answered: {}, framedTick: 0, draft: null, devices: [],
 };
 
 const listeners = new Set<() => void>();
@@ -137,7 +139,7 @@ function applyFull(fs: FullState) {
   const next: Partial<AppState> = {
     loaded: true, authError: false, tasks, machines, hist,
     needs: fs.needs_you || [], messages: (fs.messages || []).slice().sort((a, b) => a.at.localeCompare(b.at)),
-    stats: fs.stats || emptyStats, settings: { ...emptySettings, ...(fs.settings || {}) },
+    devices: fs.devices || [], stats: fs.stats || emptyStats, settings: { ...emptySettings, ...(fs.settings || {}) },
   };
   state = { ...state, ...next };
   ensureFocus();
@@ -217,6 +219,7 @@ function handle(msg: ServerMsg) {
       else if (msg.delta) setState({ draft: { ...d, text: d.text + msg.delta } });
       break;
     }
+    case 'devices': setState({ devices: msg.devices }); break;
     case 'activity': {
       const d = state.draft ?? { text: '', activity: [] };
       setState({ draft: { ...d, activity: d.activity.concat(msg.item) } });

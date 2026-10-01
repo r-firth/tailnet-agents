@@ -900,3 +900,14 @@ button.ev-i:hover{border-color:var(--line2)}
 .boundary{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin:10px;padding:12px 14px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);font-size:12.5px;color:var(--text2)}
 .boundary b{color:var(--text)}
 .boundary span{font:11.5px var(--mono);color:var(--muted)}
+
+.devs{margin-top:18px}
+.devs h3{font-size:13px;font-weight:600;margin:0 0 8px;display:flex;gap:10px;align-items:baseline}
+.devs h3 .aux{font-weight:400;font-size:11.5px;color:var(--muted)}
+.devgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px}
+.dev{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-size:12.5px}
+.dev.off{opacity:.55}
+.dev .dot{width:7px;height:7px;border-radius:4px;background:var(--line2);flex:none}
+.dev .dot.on{background:var(--ok, #4ade80)}
+.dev .os{color:var(--muted);font-size:11.5px;margin-left:auto}
+.dev .ssh{font:600 10px var(--mono);color:var(--agent);border:1px solid var(--line2);border-radius:4px;padding:0 4px}

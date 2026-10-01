@@ -51,6 +51,23 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: { caption: str("optional: what the screenshot shows, a few words, e.g. 'Receipt'") } },
   },
   {
+    name: "computer",
+    description:
+      "Look at and operate the machine's Chrome the way a person does: by sight. The screen is the 1280x800 page. 'screenshot' shows it; left_click/double_click/right_click/move at x,y; type text; key presses a key or chord (e.g. Enter, Escape, Control+a); scroll at x,y by dy (and dx) pixels. Every action returns a fresh screenshot so you can see what happened. Use it whenever a page is visual, a ref click fails or times out, something covers the page (cookie banners, popups, sign-in choosers), or you're not sure what's on screen.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["screenshot", "left_click", "double_click", "right_click", "move", "type", "key", "scroll"] },
+        x: num("x in page pixels (0-1279)"),
+        y: num("y in page pixels (0-799)"),
+        text: str("for type: the text; for key: the key or chord"),
+        dx: num("for scroll: horizontal pixels"),
+        dy: num("for scroll: vertical pixels, positive scrolls down"),
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "memory_search",
     description: "Search the user's long-term memory (facts, preferences, accounts, subscriptions, procedures from earlier runs). Do this before starting unfamiliar work.",
     inputSchema: { type: "object", properties: { query: str("what to look for") }, required: ["query"] },
@@ -108,6 +125,8 @@ export const TOOL_GUIDANCE = `You are working on the user's personal Familiar ma
 - Call step("…") with a short intent line before each phase of work, so the user can follow along. On the first step, pass next: [...] with the steps you expect after it, and again whenever the plan changes.
 - Use the shell tool for every command (it runs in the terminal the user can watch). The built-in Bash tool is disabled.
 - To look something up (what a project is, news, prices, docs), use native web search and fetch (WebSearch/WebFetch in Claude Code, web search in Codex) and cite links. Use the browser when you need a real page, a login or to act on a site.
+- Look before you act. When a page is visual, a click by ref fails or times out, or something might be covering it, take a screenshot with computer and click what you see by its coordinates. Never hand back to the user for something on screen you could click or type yourself; hand back only for their passwords, 2FA codes or a decision.
+- Before saying an account is or isn't signed in, check: open the site and look (screenshot), don't assume from memory.
 - Use browser_* tools for the web: browser_navigate, then browser_snapshot to get refs, then browser_click / browser_type with those refs. Chrome keeps the user's logins.
 - Call memory_search first for anything about the user's accounts, preferences or past procedures; call memory_note for durable facts you learn (and kind=procedure for a reusable recipe).
 - Ask with ask_user only when a real choice is needed. Before ANY payment, purchase or booking call request_approval and obey the result.

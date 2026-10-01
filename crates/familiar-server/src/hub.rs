@@ -88,6 +88,8 @@ pub struct Hub {
     pub current_inbound: Mutex<Option<Inbound>>,
     /// The coordinator's tool calls this turn, attached to its reply.
     pub turn_activity: Mutex<Vec<Value>>,
+    /// Tailnet devices from the last discovery.
+    pub devices: Mutex<Vec<Value>>,
     pub telegram_label: Mutex<String>,
 }
 
@@ -232,6 +234,7 @@ impl Hub {
             coordinator_label: Mutex::new(String::new()),
             current_inbound: Mutex::new(None),
             turn_activity: Mutex::new(Vec::new()),
+            devices: Mutex::new(Vec::new()),
             telegram_label: Mutex::new("off".into()),
         });
         hub.check_embedding_profile()?;
@@ -312,6 +315,14 @@ impl Hub {
         v
     }
 
+    pub fn set_devices(&self, devices: Vec<Value>) {
+        let changed = *self.devices.lock().unwrap() != devices;
+        if changed {
+            *self.devices.lock().unwrap() = devices.clone();
+            self.emit(json!({"type": "devices", "devices": devices}));
+        }
+    }
+
     pub fn snapshot(&self) -> Value {
         let stats = self.stats();
         let settings = self.settings_view();
@@ -327,6 +338,7 @@ impl Hub {
             "messages": messages,
             "stats": stats,
             "settings": settings,
+            "devices": *self.devices.lock().unwrap(),
         })
     }
 

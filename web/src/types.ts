@@ -154,7 +154,9 @@ export interface Settings {
   backends?: string[];
 }
 
+export interface Device { name: string; host: string; dns: string; os: string; online: boolean; ssh: boolean }
 export interface FullState {
+  devices?: Device[];
   tasks: Task[];
   machines: Machine[];
   needs_you: NeedsYou[];
@@ -186,6 +188,7 @@ export type ServerMsg =
   | { type: 'typing'; on: boolean }
   | { type: 'draft'; turn: string; delta?: string; reset?: boolean; done?: boolean }
   | { type: 'activity'; turn: string; item: Activity }
+  | { type: 'devices'; devices: Device[] }
   | { type: 'frame'; task_id: string; machine_id?: string; data: string; w: number; h: number }
   | { type: 'terminal'; task_id: string; data: string }
   | { type: 'stats'; stats: Stats };

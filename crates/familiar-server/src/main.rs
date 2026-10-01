@@ -3,6 +3,7 @@
 mod api;
 mod consolidate;
 mod coordinator;
+mod devices;
 mod embed;
 mod hub;
 mod launcher;
@@ -97,6 +98,20 @@ async fn run() -> Result<()> {
             loop {
                 every.tick().await;
                 hub.tick();
+            }
+        });
+    }
+    // Keep the tailnet's devices fresh, like tailnet-agents' discovery loop.
+    {
+        let hub = hub.clone();
+        tokio::spawn(async move {
+            let mut every = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                every.tick().await;
+                match devices::snapshot().await {
+                    Ok(d) => hub.set_devices(d),
+                    Err(e) => tracing::debug!("tailnet discovery: {e:#}"),
+                }
             }
         });
     }
