@@ -6,6 +6,18 @@ import { abortError, log, raceAbort } from "./util.js";
 
 export const VIEWPORT = { width: 1280, height: 800 };
 
+/** The user agent this Chrome would send with a window, rather than the HeadlessChrome one. */
+export function normalUserAgent(executablePath: string): string | undefined {
+  try {
+    const major = execFileSync(executablePath, ["--version"], { encoding: "utf8" }).match(/(\d+)\.\d+/)?.[1];
+    if (!major) return undefined;
+    const platform = process.platform === "darwin" ? "Macintosh; Intel Mac OS X 10_15_7" : process.platform === "win32" ? "Windows NT 10.0; Win64; x64" : "X11; Linux x86_64";
+    return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+  } catch {
+    return undefined;
+  }
+}
+
 export function findChrome(): string | undefined {
   const candidates: (string | undefined)[] = [process.env.CHROME_PATH];
   try {
@@ -142,12 +154,16 @@ export class Browser {
     this.context = await chromium.launchPersistentContext(this.profileDir, {
       executablePath,
       headless: this.headless,
+      // Headless Chrome says "HeadlessChrome" and sets navigator.webdriver; Google and others then refuse to
+      // let you sign in. Present as the normal Chrome it is, so logging in once in the live view works.
+      ...(this.headless ? { userAgent: normalUserAgent(executablePath) } : {}),
       viewport: null,
       ignoreDefaultArgs: ["--enable-automation"], // no "controlled by automated test software" bar in the desktop view
       locale: "en-GB",
       env: { ...process.env, GOOGLE_API_KEY: "no", GOOGLE_DEFAULT_CLIENT_ID: "no", GOOGLE_DEFAULT_CLIENT_SECRET: "no" } as Record<string, string>,
       timezoneId: process.env.TZ || "Europe/London",
       args: [
+        "--disable-blink-features=AutomationControlled",
         "--no-first-run",
         "--no-default-browser-check",
         "--hide-crash-restore-bubble",
