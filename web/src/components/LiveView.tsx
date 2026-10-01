@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as RKE, type PointerEvent as RPE } from 'react';
+import { sourceLabel } from '../md';
 import { getFrame, onFrame } from '../bus';
 import { artifactUrl } from '../api';
 import { machineName, sendInput, setControl, execName } from '../store';
@@ -143,7 +144,7 @@ function MomentCard({ m, task, machine }: { m: Moment | null; task: Task; machin
     return (
       <div className="vstate"><div className="card">
         <div className="eyebrow"><span className="k memory" />Memory · {e.hits?.length ?? 0} recalled for “{e.query}”</div>
-        <div className="hits">{(e.hits || []).slice(0, 6).map((h) => <div key={h.id}><b>{h.score.toFixed(2).replace(/^0/, '')}</b><span>{h.text}</span><small>{h.kind || h.source}</small></div>)}</div>
+        <div className="hits">{(e.hits || []).slice(0, 6).map((h) => <div key={h.id}><b>{h.score.toFixed(2).replace(/^0/, '')}</b><span>{h.text}</span><small>{h.kind || sourceLabel(h.source)}</small></div>)}</div>
       </div></div>
     );
   }

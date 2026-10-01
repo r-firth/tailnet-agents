@@ -75,6 +75,13 @@ export function MdLite({ text, className }: { text: string | null | undefined; c
   return <div className={`md ${className || ''}`}>{blocks.map((b, i) => <Fragment key={i}>{b}</Fragment>)}</div>;
 }
 
+/** A memory hit's source as text: older hits carry a string, newer ones an object with a label. */
+export function sourceLabel(source: unknown): string {
+  if (typeof source === 'string') return source;
+  if (source && typeof source === 'object' && typeof (source as { label?: unknown }).label === 'string') return (source as { label: string }).label;
+  return '';
+}
+
 /** Plain text for places that cannot hold markup (titles, tooltips, one-line previews). */
 export function stripMd(text: string | null | undefined): string {
   if (!text) return '';

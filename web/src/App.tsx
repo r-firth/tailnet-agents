@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Boundary } from './components/Boundary';
 import { activeTasks, finishedTasks, focus, getState, messageFamiliar, openChat, openOverlay, setState, useDocked, useStore } from './store';
 import { ignoreKey } from './keys';
 import { useTheme } from './theme';
@@ -73,19 +74,19 @@ export function App() {
   return (
     <div className={`app ${s.chatOpen || docked ? 'chat-open' : ''} ${docked ? 'docked' : ''}`}>
       <TopBar />
-      <NeedsStrip />
+      <Boundary name="Needs you"><NeedsStrip /></Boundary>
       <main className={`desk ${others ? '' : 'solo'}`}>
         {!s.loaded ? (
           <section className="focus"><div className="loading"><Dither w={48} h={12} shape="wave" color="--agent" animate theme={resolved} />Connecting to Familiar…</div></section>
-        ) : noTasks || !task ? <EmptyState /> : <Focus key={task.id} task={task} />}
-        <Rail />
+        ) : noTasks || !task ? <EmptyState /> : <Boundary key={task.id} name="This run's view"><Focus task={task} /></Boundary>}
+        <Boundary name="Runs"><Rail /></Boundary>
       </main>
       <Footer />
       <div className="mobile-compose">
         <button onClick={() => openChat(true)}><IChat />Message Familiar…{s.unread > 0 && <span className="badge">{s.unread}</span>}</button>
       </div>
-      <Chat />
-      <Palette />
+      <Boundary name="Chat"><Chat /></Boundary>
+      <Boundary name="Commands"><Palette /></Boundary>
       {s.overlay === 'memory' && <MemoryView />}
       {s.overlay === 'machines' && <MachinesView />}
       {s.overlay === 'settings' && <SettingsView />}

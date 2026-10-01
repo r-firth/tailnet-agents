@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { sourceLabel } from '../md';
 import type { Machine, NeedsYou, Task, TaskEvent } from '../types';
 import { stepAt, stepTextAt, type StepRow } from '../timeline';
 import { dur, timeOf, uptime } from '../format';
@@ -45,8 +46,9 @@ const OP: Record<string, string> = { add: '+', supersede: '~', forget: '−' };
 const FLOOR = 0.45;
 
 /** "Task #3" → "run 3 · Cancel my polyform sub" when that run is known. */
-function provenance(src: string | undefined, kind: string | undefined): { short: string; long: string } {
-  const m = /^task #?(\d+)/i.exec(src || '');
+function provenance(source: unknown, kind: string | undefined): { short: string; long: string } {
+  const src = sourceLabel(source);
+  const m = /^task #?(\d+)/i.exec(src);
   if (m) {
     const t = Object.values(getState().tasks).find((x) => x.num === +m[1]);
     return { short: `run ${m[1]}`, long: t ? `Learned in run ${m[1]}, ${t.title}` : `Learned in run ${m[1]}` };
