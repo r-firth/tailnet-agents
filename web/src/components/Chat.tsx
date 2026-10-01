@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { focus, openChat, sendMessage, useStore, getState } from '../store';
+import { focus, openChat, sendMessage, useDocked, useStore, getState } from '../store';
 import type { Message } from '../types';
 import { timeOf } from '../format';
 import { ISend, ITelegram, IX, IArrowR, IChat } from '../icons';
@@ -80,23 +80,24 @@ function Bubble({ m }: { m: Message }) {
 
 export function Chat() {
   const s = useStore();
+  const docked = useDocked();
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => { const el = body.current; if (el) el.scrollTop = el.scrollHeight; }, [s.messages.length, s.typing, s.chatOpen]);
   useEffect(() => {
-    if (!s.chatOpen) return;
+    if (!s.chatOpen || docked) return;
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !getState().paletteOpen && !getState().overlay) openChat(false); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [s.chatOpen]);
-  if (!s.chatOpen) return null;
+  }, [s.chatOpen, docked]);
+  if (!s.chatOpen && !docked) return null;
   let lastDay = '';
   return (
-    <aside className="chat" role="dialog" aria-label="Conversation with Familiar">
+    <aside className={`chat ${docked ? 'docked' : ''}`} role={docked ? 'complementary' : 'dialog'} aria-label="Conversation with Familiar">
       <div className="chat-h">
         <span className="av"><Mark /></span>
         <div><b>Familiar</b><small>{s.typing ? 'thinking…' : `coordinator · ${s.settings.coordinator || 'online'} · same thread as Telegram`}</small></div>
         <span className="sp" />
-        <button className="btn ghost sm" onClick={() => openChat(false)} aria-label="Close chat"><IX /></button>
+        {!docked && <button className="btn ghost sm" onClick={() => openChat(false)} aria-label="Close chat"><IX /></button>}
       </div>
       <div className="chat-b" ref={body}>
         {s.messages.length === 0 && (
@@ -109,7 +110,7 @@ export function Chat() {
         })}
         {s.typing && <div className="typing" aria-label="Familiar is typing"><i /><i /><i /></div>}
       </div>
-      <div className="chat-f"><Composer autoFocus /></div>
+      <div className="chat-f"><Composer autoFocus={!docked} /></div>
     </aside>
   );
 }

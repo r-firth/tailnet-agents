@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { api, ApiError, streamUrl } from './api';
 import { pushFrame, pushTerminal, onFirstFrame, hasFrames } from './bus';
 import type { FullState, InputMsg, Machine, Message, NeedsYou, ServerMsg, Settings, Stats, Task, TaskEvent } from './types';
@@ -346,6 +346,25 @@ export function followUp(t: Task) {
   setTimeout(() => window.dispatchEvent(new CustomEvent('familiar:compose', { detail: `About run ${t.num} (${t.title}): ` })), 30);
 }
 
+/** On anything wider than a phone the chat is docked: always on screen, never closed. */
+const DOCK_QUERY = '(min-width: 821px)';
+export function isDocked() { return typeof matchMedia === 'function' && matchMedia(DOCK_QUERY).matches; }
+export function useDocked() {
+  const [docked, setDocked] = useState(isDocked);
+  useEffect(() => {
+    const m = matchMedia(DOCK_QUERY);
+    const f = () => setDocked(m.matches);
+    m.addEventListener('change', f);
+    return () => m.removeEventListener('change', f);
+  }, []);
+  return docked;
+}
+/** "Message Familiar": focus the docked composer, or toggle the chat sheet on a phone. */
+export function messageFamiliar() {
+  if (!isDocked()) return openChat(!state.chatOpen);
+  openChat(true);
+  document.querySelector<HTMLTextAreaElement>('.chat-f textarea')?.focus();
+}
 export function openChat(open = true) { setState({ chatOpen: open, unread: open ? 0 : state.unread, paletteOpen: false }); }
 export function openOverlay(o: Overlay, extra: Partial<AppState> = {}) { setState({ overlay: o, paletteOpen: false, ...extra }); }
 

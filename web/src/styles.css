@@ -739,6 +739,22 @@ button.ev-i:hover{border-color:var(--line2)}
   .app.chat-open .rail{display:none}
   .app.chat-open .needs{padding-right:436px}
 }
+/* ---------------------------------------------------------------- docked chat: a permanent column on the right */
+@media (min-width:821px){
+  .app.docked{--chatw:clamp(380px,32vw,560px)}
+  .chat.docked{width:var(--chatw);box-shadow:none;animation:none;z-index:20}
+  .app.docked .desk,.app.docked .needs{padding-right:calc(var(--chatw) + 16px)}
+}
+@media (min-width:1181px){
+  .app.docked .desk{grid-template-columns:minmax(0,1fr)}
+  .app.docked .rail{display:none}
+}
+/* wide screens have room for the run tiles beside the chat too */
+@media (min-width:1600px){
+  .app.docked .desk{grid-template-columns:minmax(0,1fr) 248px}
+  .app.docked .rail{display:flex}
+  .app.docked .fb{grid-template-columns:minmax(0,1fr) 300px}
+}
 /* ---------------------------------------------------------------- medium: stack right column under the view */
 @media (max-width:1180px), (max-height:700px){
   .app{height:auto;min-height:100vh}

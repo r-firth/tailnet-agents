@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { activeTasks, finishedTasks, focus, getState, openChat, openOverlay, setState, useStore } from './store';
+import { activeTasks, finishedTasks, focus, getState, messageFamiliar, openChat, openOverlay, setState, useDocked, useStore } from './store';
 import { ignoreKey } from './keys';
 import { useTheme } from './theme';
 import { TopBar } from './components/TopBar';
@@ -40,7 +40,7 @@ export function App() {
       if (ignoreKey(e)) return;
       const k = e.key.toLowerCase();
       if (['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); const t = activeTasks(st)[+e.key - 1]; if (t) focus(t.id); }
-      else if (k === 'c') { e.preventDefault(); openChat(!st.chatOpen); }
+      else if (k === 'c') { e.preventDefault(); messageFamiliar(); }
       else if (k === 'm') { e.preventDefault(); openOverlay('memory'); }
       else if (k === '/') { e.preventDefault(); setState({ paletteOpen: true }); }
       else if (e.key === '?') { e.preventDefault(); openOverlay('keys'); }
@@ -62,13 +62,16 @@ export function App() {
   const waiting = s.needs.filter((n) => !s.answered[n.id]).length;
   useEffect(() => { document.title = waiting ? `(${waiting}) Familiar` : 'Familiar'; }, [waiting]);
 
+  const docked = useDocked();
+  // A docked chat is always open, so nothing goes unread behind it.
+  useEffect(() => { if (docked && !getState().chatOpen) openChat(true); }, [docked]);
   if (s.authError && !s.loaded) return <AuthGate />;
   const task = s.focusId ? s.tasks[s.focusId] : null;
   const noTasks = s.loaded && Object.keys(s.tasks).length === 0;
   const others = activeTasks(s).filter((t) => t.id !== s.focusId).length;
 
   return (
-    <div className={`app ${s.chatOpen ? 'chat-open' : ''}`}>
+    <div className={`app ${s.chatOpen || docked ? 'chat-open' : ''} ${docked ? 'docked' : ''}`}>
       <TopBar />
       <NeedsStrip />
       <main className={`desk ${others ? '' : 'solo'}`}>

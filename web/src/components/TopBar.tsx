@@ -1,4 +1,4 @@
-import { activeTasks, openChat, openOverlay, setState, useStore, machineName } from '../store';
+import { activeTasks, messageFamiliar, openOverlay, setState, useStore, machineName } from '../store';
 import { cycleTheme, useTheme } from '../theme';
 import { clock } from '../format';
 import { Dither } from './Dither';
@@ -35,7 +35,7 @@ export function TopBar() {
           {s.conn === 'offline' ? <IWifiOff /> : <span className="dot" />}{s.conn === 'offline' ? 'Offline, retrying' : 'Reconnecting'}
         </span>
       )}
-      <button className="tbtn msg" onClick={() => openChat(!s.chatOpen)} aria-label="Message Familiar" title="Message Familiar (C)">
+      <button className="tbtn msg" onClick={messageFamiliar} aria-label="Message Familiar" title="Message Familiar (C)">
         <IChat /><span className="grow lbl">Message Familiar…</span><kbd>C</kbd>
         {s.unread > 0 && !s.chatOpen && <span className="badge">{s.unread}</span>}
       </button>
