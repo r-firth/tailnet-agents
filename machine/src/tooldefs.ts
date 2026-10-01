@@ -12,60 +12,8 @@ export const TOOLS: ToolDef[] = [
   {
     name: "shell",
     description:
-      "Run a bash command in the machine's visible terminal (the user can watch it). Returns the output and exit code. The shell is persistent: cd and exported variables carry over. Avoid interactive programs; pass -y style flags.",
+      "Run a bash command in the machine's real terminal, which the user watches live and can type into. Use it for every command (your own shell tool is turned off). Returns the output and exit code. The shell is persistent: cd and exported variables carry over. Avoid interactive programs; pass -y style flags.",
     inputSchema: { type: "object", properties: { command: str("bash command line (may be multi-line)"), timeout_s: num("seconds before Ctrl-C (default 120, max 1800)") }, required: ["command"] },
-  },
-  {
-    name: "browser_navigate",
-    description: "Open a URL in the machine's Chrome (persistent profile, so existing logins apply). Returns the page title.",
-    inputSchema: { type: "object", properties: { url: str("absolute URL") }, required: ["url"] },
-  },
-  {
-    name: "browser_snapshot",
-    description: "Compact accessibility tree of the current page. Interactive elements carry refs like [ref=e12] that browser_click / browser_type accept. Take a fresh snapshot after the page changes.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "browser_click",
-    description: "Click an element by snapshot ref (e.g. \"e12\") or by its visible text / accessible name.",
-    inputSchema: { type: "object", properties: { ref: str("ref from browser_snapshot"), text: str("visible text or accessible name, used when no ref is given") } },
-  },
-  {
-    name: "browser_type",
-    description: "Fill a text field (by ref, label, or placeholder) with a value; optionally press Enter.",
-    inputSchema: { type: "object", properties: { ref: str("ref from browser_snapshot"), text: str("label/placeholder of the field, used when no ref is given"), value: str("text to enter"), submit: { type: "boolean", description: "press Enter afterwards" } }, required: ["value"] },
-  },
-  {
-    name: "browser_press",
-    description: "Press a key or chord in the page, e.g. Enter, Escape, Tab, Control+A.",
-    inputSchema: { type: "object", properties: { key: str("key name") }, required: ["key"] },
-  },
-  {
-    name: "browser_wait_for",
-    description: "Wait until the given text is visible on the page (case-insensitive substring).",
-    inputSchema: { type: "object", properties: { text: str("text to wait for"), timeout_s: num("default 30") }, required: ["text"] },
-  },
-  {
-    name: "browser_screenshot",
-    description: "Screenshot of the current page (also recorded on the task timeline).",
-    inputSchema: { type: "object", properties: { caption: str("optional: what the screenshot shows, a few words, e.g. 'Receipt'") } },
-  },
-  {
-    name: "computer",
-    description:
-      "Look at and operate the machine's Chrome the way a person does: by sight. The screen is the 1280x800 page. 'screenshot' shows it; left_click/double_click/right_click/move at x,y; type text; key presses a key or chord (e.g. Enter, Escape, Control+a); scroll at x,y by dy (and dx) pixels. Every action returns a fresh screenshot so you can see what happened. Use it whenever a page is visual, a ref click fails or times out, something covers the page (cookie banners, popups, sign-in choosers), or you're not sure what's on screen.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        action: { type: "string", enum: ["screenshot", "left_click", "double_click", "right_click", "move", "type", "key", "scroll"] },
-        x: num("x in page pixels (0-1279)"),
-        y: num("y in page pixels (0-799)"),
-        text: str("for type: the text; for key: the key or chord"),
-        dx: num("for scroll: horizontal pixels"),
-        dy: num("for scroll: vertical pixels, positive scrolls down"),
-      },
-      required: ["action"],
-    },
   },
   {
     name: "memory_search",
@@ -121,13 +69,12 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-export const TOOL_GUIDANCE = `You are working on the user's personal Familiar machine. Use ONLY the "familiar" MCP tools for actions:
+export const TOOL_GUIDANCE = `You are working on the user's personal Familiar machine, a computer with its own screen that the user watches live.
+- Run every command with the familiar shell tool: it types into the machine's real terminal, which the user watches live (your own shell tool is off). Otherwise use your own native tools: file tools, web search and fetch, and your browser or computer-use tools when you have them.
+- Whatever you're working in (a browser window, an app) should be maximised and in focus, so the user can follow along on the screen.
+- Chrome on this machine keeps the user's logins. Use it rather than starting fresh browsers or profiles.
 - Call step("…") with a short intent line before each phase of work, so the user can follow along. On the first step, pass next: [...] with the steps you expect after it, and again whenever the plan changes.
-- Use the shell tool for every command (it runs in the terminal the user can watch). The built-in Bash tool is disabled.
-- To look something up (what a project is, news, prices, docs), use native web search and fetch (WebSearch/WebFetch in Claude Code, web search in Codex) and cite links. Use the browser when you need a real page, a login or to act on a site.
-- Look before you act. When a page is visual, a click by ref fails or times out, or something might be covering it, take a screenshot with computer and click what you see by its coordinates. Never hand back to the user for something on screen you could click or type yourself; hand back only for their passwords, 2FA codes or a decision.
-- Before saying an account is or isn't signed in, check: open the site and look (screenshot), don't assume from memory.
-- Use browser_* tools for the web: browser_navigate, then browser_snapshot to get refs, then browser_click / browser_type with those refs. Chrome keeps the user's logins.
+- Look before you act, and check before claiming: before saying an account is or isn't signed in, open it and look. Never hand back to the user for something you could do yourself; hand back only for their passwords, 2FA codes or a decision.
 - Call memory_search first for anything about the user's accounts, preferences or past procedures; call memory_note for durable facts you learn (and kind=procedure for a reusable recipe).
 - Ask with ask_user only when a real choice is needed. Before ANY payment, purchase or booking call request_approval and obey the result.
 - When done, call finish(outcome, answer, summary). answer is what the user reads as your reply: give them the actual result they asked for, not how you got it. Plain text you write outside tools is not sent to the user.`;

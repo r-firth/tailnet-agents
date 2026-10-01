@@ -47,7 +47,7 @@ RUN --mount=type=secret,id=build_ca,required=false \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       chromium fonts-liberation fonts-dejavu-core fonts-noto-color-emoji \
-      xvfb x11vnc novnc websockify openbox x11-xserver-utils xterm \
+      xvfb x11vnc novnc websockify openbox x11-xserver-utils xterm xdotool \
       tini procps ca-certificates curl git python3 ffmpeg less nano unzip xz-utils bsdutils locales; \
     sed -i 's/^# *en_GB.UTF-8/en_GB.UTF-8/' /etc/locale.gen && locale-gen; \
     rm -f /etc/apt/apt.conf.d/99build-ca; \

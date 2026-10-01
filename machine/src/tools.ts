@@ -64,7 +64,7 @@ async function recorded<T>(
 /** A screenshot on the timeline; `action` says what just happened, in words the filmstrip can show. */
 async function keyframe(host: Host, task: TaskRun, action?: string) {
   try {
-    const shot = await host.browser.screenshot();
+    const shot = await (host.screen ?? host.browser).screenshot();
     task.lastScreenshot = shot.jpeg;
     host.event(task, { kind: "keyframe", actor: "browser", image: shot.jpeg.toString("base64"), url: shot.url, title: shot.title, ...(action ? { action } : {}) });
     return shot;
@@ -134,87 +134,6 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         const text = `${r.output}\n[exit code: ${r.exit_code ?? "none"}${r.timed_out ? ", timed out and interrupted" : ""}]`;
         return { ok: r.exit_code === 0 && !r.timed_out, text, data: { output: r.output, exit_code: r.exit_code, timed_out: r.timed_out } };
       }
-      case "browser_navigate": {
-        const url = String(a.url ?? "");
-        if (!url) return err("url is required");
-        const r = await recorded(host, task, "browser.navigate", url, () => b.navigate(url, task.signal), (r) => ({ result: r.title || r.url }));
-        await keyframe(host, task, `Opened ${shortTitle(r.title) || hostOf(r.url)}`);
-        return ok(`Opened ${r.url} — "${r.title}"${r.status && r.status >= 400 ? ` (HTTP ${r.status})` : ""}`, r);
-      }
-      case "browser_snapshot": {
-        const r = await recorded(host, task, "browser.snapshot", "page", () => b.snapshot(), (r) => ({ result: `${(r.tree.match(/\[ref=/g) ?? []).length} refs · ${r.title}`, content: `${r.title}\n${r.url}\n${r.tree.replace(/ \[ref=[^\]]*\]/g, "")}` }));
-        return ok(`Page: ${r.title}\nURL: ${r.url}\n${r.tree}`, { url: r.url, title: r.title });
-      }
-      case "browser_click": {
-        const t = targetOf(a);
-        if (!t) return err("ref or text is required");
-        const r = await recorded(host, task, "browser.click", b.describe(t), () => b.click(t), (r) => ({ result: r.title ? `→ ${r.title}` : "clicked" }));
-        await keyframe(host, task, `Clicked “${truncate(String(r.clicked ?? t), 32)}”`);
-        return ok(`Clicked "${r.clicked}". Now on ${r.url} — "${r.title}"`, r);
-      }
-      case "browser_type": {
-        const t = targetOf(a);
-        const value = String(a.value ?? "");
-        if (!t) return err("ref or text is required");
-        const secret = /pass|secret|token|card|cvc|cvv/i.test(t);
-        const shown = secret ? "•".repeat(Math.min(value.length, 8)) : truncate(value, 60);
-        const r = await recorded(host, task, "browser.type", `${b.describe(t)} ← "${shown}"`, () => b.type(t, value, !!a.submit), () => ({ result: a.submit ? "typed and submitted" : "typed" }));
-        await keyframe(host, task, a.submit ? `Typed and sent “${secret ? "•••" : truncate(value, 24)}”` : `Typed “${secret ? "•••" : truncate(value, 24)}”`);
-        return ok(`Typed into ${t}${a.submit ? " and pressed Enter" : ""}. Now on ${r.url}`, r);
-      }
-      case "browser_press": {
-        const key = String(a.key ?? "");
-        if (!key) return err("key is required");
-        await recorded(host, task, "browser.press", key, () => b.press(key), () => ({ result: "pressed" }));
-        await keyframe(host, task, `Pressed ${key}`);
-        return ok(`Pressed ${key}`);
-      }
-      case "browser_wait_for": {
-        const text = String(a.text ?? "");
-        if (!text) return err("text is required");
-        const timeout = Math.min(600, Math.max(1, Number(a.timeout_s) || 30)) * 1000;
-        host.update(task, { waiting_for: `text "${truncate(text, 40)}"` });
-        try {
-          const r = await recorded(host, task, "browser.wait_for", `text "${text}"`, () => b.waitFor(text, timeout, task.signal), (r) => ({ result: `appeared after ${(r.waited_ms / 1000).toFixed(1)}s` }));
-          await keyframe(host, task, `“${truncate(text, 28)}” appeared`);
-          return ok(`"${text}" is visible on ${r.url}`, r);
-        } finally {
-          host.update(task, { waiting_for: null });
-        }
-      }
-      case "computer": {
-        const action = String(a.action ?? "screenshot");
-        const x = Math.round(Number(a.x)), y = Math.round(Number(a.y));
-        const hasXY = Number.isFinite(x) && Number.isFinite(y);
-        const target = action === "type" ? `"${oneLine(String(a.text ?? ""), 60)}"` : action === "key" ? String(a.text ?? "") : hasXY ? `${x},${y}` : "page";
-        const shot = await recorded(host, task, `computer.${action}`, target, async () => {
-          const p = await b.activePage();
-          if (action !== "screenshot" && action !== "type" && action !== "key" && !hasXY) throw new Error(`${action} needs x and y`);
-          switch (action) {
-            case "left_click": await p.mouse.click(x, y); break;
-            case "double_click": await p.mouse.dblclick(x, y); break;
-            case "right_click": await p.mouse.click(x, y, { button: "right" }); break;
-            case "move": await p.mouse.move(x, y); break;
-            case "type": await p.keyboard.type(String(a.text ?? ""), { delay: 15 }); break;
-            case "key": await p.keyboard.press(String(a.text ?? "Enter")); break;
-            case "scroll": await p.mouse.move(x, y); await p.mouse.wheel(Number(a.dx) || 0, Number(a.dy) || 0); break;
-          }
-          if (action !== "screenshot" && action !== "move") await p.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {});
-          await p.waitForTimeout(action === "screenshot" ? 0 : 400);
-          return b.screenshot();
-        }, (s) => ({ result: s.title || s.url }));
-        const image = shot.jpeg.toString("base64");
-        task.lastScreenshot = shot.jpeg;
-        if (action !== "screenshot" && action !== "move") host.event(task, { kind: "keyframe", actor: "browser", image, url: shot.url, title: shot.title, action: `${action.replace("_", " ")} ${target}` });
-        return ok(`${action} done. Now on ${shot.url} — "${shot.title}". Screenshot attached (1280x800).`, { url: shot.url, title: shot.title }, image);
-      }
-      case "browser_screenshot": {
-        const shot = await recorded(host, task, "browser.screenshot", "page", () => b.screenshot(), (s) => ({ result: s.title || s.url }));
-        task.lastScreenshot = shot.jpeg;
-        const image = shot.jpeg.toString("base64");
-        host.event(task, { kind: "keyframe", actor: "browser", image, url: shot.url, title: shot.title, action: String(a.caption ?? "") || "Screenshot" });
-        return ok(`Screenshot of ${shot.url} — "${shot.title}"`, { url: shot.url, title: shot.title }, image);
-      }
       case "memory_search": {
         const query = String(a.query ?? "");
         const r = await host.memory(task, "search", { query });
@@ -266,8 +185,8 @@ export async function callTool(host: Host, task: TaskRun, name: string, a: Args 
         const summary = String(a.summary ?? "").trim() || "Done.";
         let receipt: Buffer | undefined;
         try {
-          const shot = await host.browser.screenshot();
-          if (shot.url && shot.url !== "about:blank") receipt = shot.jpeg;
+          const shot = await (host.screen ?? host.browser).screenshot();
+          if (host.screen || (shot.url && shot.url !== "about:blank")) receipt = shot.jpeg;
         } catch {
           /* no browser page */
         }

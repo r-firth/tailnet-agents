@@ -1,4 +1,5 @@
 import type { Browser } from "./browser.js";
+import type { Screen } from "./screen.js";
 import type { Config } from "./config.js";
 import type { Terminal } from "./terminal.js";
 import type { DemoSite } from "./demo-site.js";
@@ -59,6 +60,8 @@ export class TaskRun {
 export interface Host {
   cfg: Config;
   browser: Browser;
+  /** The whole display, when the machine has one: what runs work on and the live view shows. */
+  screen: Screen | null;
   terminal: Terminal;
   demo: DemoSite;
   bridge: { url: string; token: string };

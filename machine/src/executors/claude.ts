@@ -23,6 +23,8 @@ const VERSION_RE = /(Claude Code [\d.]+) does not support this model; version ([
 export function describeClaudeTool(name: string, input: any): { tool: string; target: string; actor: string } {
   const i = input ?? {};
   switch (name) {
+    case "Bash":
+      return { tool: "shell", target: String(i.command ?? ""), actor: "machine" };
     case "Read":
       return { tool: "file.read", target: String(i.file_path ?? ""), actor: "machine" };
     case "Write":
@@ -118,13 +120,15 @@ export class ClaudeStream {
           const p = this.pending.get(b.tool_use_id);
           if (!p) continue;
           this.pending.delete(b.tool_use_id);
+          const full = resultText(b.content);
           h.event(t, {
             kind: "tool",
             actor: p.actor,
             tool: p.tool,
             target: truncate(p.target, 200),
             status: b.is_error ? "error" : "ok",
-            result: oneLine(resultText(b.content), 160),
+            result: oneLine(full, 160),
+            ...(p.tool === "shell" && full.trim() ? { content: truncate(full, 12_000) } : {}),
             duration_ms: Date.now() - p.at,
             call_id: b.tool_use_id,
           });
@@ -207,6 +211,7 @@ export async function runClaude(h: Host, t: TaskRun): Promise<void> {
     "--strict-mcp-config",
     "--mcp-config",
     mcpConfig,
+    // Commands go through Familiar's real terminal (shell tool) so the user watches them live and can type in.
     "--disallowedTools",
     "Bash",
   ];

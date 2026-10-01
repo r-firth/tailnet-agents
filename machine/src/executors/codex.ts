@@ -35,11 +35,11 @@ export class CodexStream {
     this.h.event(this.t, { kind: "tool", actor, tool, target: truncate(target, 200), status: "pending", call_id: key });
   }
 
-  private end(key: string, ok: boolean, result: string, fallback?: { tool: string; target: string; actor: string }) {
+  private end(key: string, ok: boolean, result: string, fallback?: { tool: string; target: string; actor: string }, output?: string, _exit?: number | null) {
     const p = this.pending.get(key) ?? (fallback ? { ...fallback, at: Date.now() } : undefined);
     if (!p) return;
     this.pending.delete(key);
-    this.h.event(this.t, { kind: "tool", actor: p.actor, tool: p.tool, target: truncate(p.target, 200), status: ok ? "ok" : "error", result: oneLine(result, 160), duration_ms: Date.now() - p.at, call_id: key });
+    this.h.event(this.t, { kind: "tool", actor: p.actor, tool: p.tool, target: truncate(p.target, 200), status: ok ? "ok" : "error", result: oneLine(result, 160), ...(p.tool === "shell" && output?.trim() ? { content: truncate(output, 12_000) } : {}), duration_ms: Date.now() - p.at, call_id: key });
   }
 
   private addTokens(u: any) {
@@ -91,7 +91,7 @@ export class CodexStream {
             item.type === "command_execution"
               ? `exit ${item.exit_code ?? "?"} · ${String(item.aggregated_output ?? "").trim().split("\n").pop() ?? ""}`
               : item.error?.message ?? (item.status || "done");
-          this.end(key, ok, result, d);
+          this.end(key, ok, result, d, item.type === "command_execution" ? String(item.aggregated_output ?? "") : undefined, item.exit_code);
         }
         return;
       }
@@ -120,7 +120,7 @@ export class CodexStream {
         this.start(String(m.call_id ?? id), "shell", Array.isArray(m.command) ? m.command.join(" ") : String(m.command ?? ""), "machine");
         return;
       case "exec_command_end":
-        this.end(String(m.call_id ?? id), m.exit_code === 0, `exit ${m.exit_code} · ${String(m.stdout ?? m.aggregated_output ?? "").trim().split("\n").pop() ?? ""}`);
+        this.end(String(m.call_id ?? id), m.exit_code === 0, `exit ${m.exit_code} · ${String(m.stdout ?? m.aggregated_output ?? "").trim().split("\n").pop() ?? ""}`, undefined, String(m.aggregated_output ?? m.stdout ?? ""), m.exit_code);
         return;
       case "token_count":
         if (m.info?.total_token_usage) {
@@ -157,6 +157,11 @@ export async function runCodex(h: Host, t: TaskRun): Promise<void> {
   const mcpEnv = `{FAMILIAR_AGENTD_URL=${toml(h.bridge.url)},FAMILIAR_AGENTD_TOKEN=${toml(h.bridge.token)},FAMILIAR_TASK_ID=${toml(t.id)}}`;
   const args = [
     "--search", // native web search
+    // Commands go through Familiar's real terminal (the familiar shell tool), not Codex's own shell.
+    "-c",
+    "features.shell_tool=false",
+    "-c",
+    "features.unified_exec=false",
     "exec",
     "--json",
     "--dangerously-bypass-approvals-and-sandbox",

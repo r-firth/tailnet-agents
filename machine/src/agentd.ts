@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Bridge } from "./bridge.js";
 import { Browser } from "./browser.js";
+import { Screen } from "./screen.js";
 import { type Config, connectUrl } from "./config.js";
 import { Connection } from "./conn.js";
 import { DemoSite, SESSION_COOKIE, SESSION_VALUE } from "./demo-site.js";
@@ -22,6 +23,7 @@ type Msg = { type: string; [k: string]: any };
 export class Agentd implements Host {
   readonly conn: Connection;
   readonly browser: Browser;
+  readonly screen: Screen | null;
   readonly terminal: Terminal;
   readonly demo: DemoSite;
   readonly bridge: { url: string; token: string } = { url: "", token: "" };
@@ -42,6 +44,8 @@ export class Agentd implements Host {
   constructor(readonly cfg: Config) {
     this.conn = new Connection(connectUrl(cfg), () => this.hello());
     this.browser = new Browser(path.join(cfg.home, ".config", "familiar-chrome"));
+    // With a display, agents use the real screen and their own tools; Playwright's browser is only for the scripted demo.
+    this.screen = process.env.DISPLAY && !process.env.FAMILIAR_PLAYWRIGHT ? new Screen(process.env.DISPLAY, path.join(cfg.home, ".config", "familiar-chrome")) : null;
     this.terminal = new Terminal(cfg.home, cfg.name);
     this.demo = new DemoSite(cfg.scriptSpeed);
     this.bridgeSrv = new Bridge((taskId, name, args) => this.bridgeCall(taskId, name, args));
@@ -56,11 +60,17 @@ export class Agentd implements Host {
     Object.assign(this.bridge, { url: this.bridgeSrv.url, token: this.bridgeSrv.token });
     this.terminal.onOutput((d) => this.onTerminal(d));
     await this.terminal.start().catch((e) => log("error", "terminal failed to start", e));
-    this.browser.onFrame = (data, w, h) => {
+    const sink = (data: string, w: number, h: number) => {
       const t = this.task;
       if (t) this.conn.send({ type: "frame", task_id: t.id, data, w, h });
     };
-    await this.browser.start().catch((e) => log("error", "browser failed to start (will retry on first use)", e));
+    if (this.screen) {
+      this.screen.onFrame = sink;
+      await this.screen.start().catch((e) => log("error", "screen capture failed to start", e));
+    } else {
+      this.browser.onFrame = sink;
+      await this.browser.start().catch((e) => log("error", "browser failed to start (will retry on first use)", e));
+    }
     await this.demoLogin();
     this.installs = scanInstalls(this.cfg.home);
     this.conn.on("message", (m: Msg) => void this.onMessage(m).catch((e) => log("error", `handling ${m.type} failed`, e)));
@@ -107,6 +117,7 @@ export class Agentd implements Host {
     for (const timer of this.timers) clearInterval(timer);
     await this.conn.close();
     await this.browser.close();
+    await this.screen?.close();
     this.terminal.kill();
     this.bridgeSrv.stop();
     this.demo.stop();
@@ -161,7 +172,7 @@ export class Agentd implements Host {
     const t = this.task;
     const s = this.subscription;
     const rate = this.control.taken ? "full" : t && (s.taskId === t.id || s.taskId === null) ? s.rate : "tile";
-    this.browser.setRate(rate);
+    (this.screen ?? this.browser).setRate(rate);
   }
 
   // ---------------------------------------------------------------- tasks
@@ -221,6 +232,7 @@ export class Agentd implements Host {
 
   /** The demo sites count as "already logged in" (a saved session cookie), whatever the executor. */
   private async demoLogin() {
+    if (this.screen) return; // the scripted demo uses Playwright's browser, which a screen machine doesn't run
     await this.browser.addCookies([{ name: SESSION_COOKIE, value: SESSION_VALUE, url: this.demo.origin }]).catch(() => {});
   }
 
@@ -386,7 +398,7 @@ export class Agentd implements Host {
       this.terminal.resize(Number(input.cols), Number(input.rows));
       return;
     }
-    await this.browser.input(input).catch((e) => log("warn", "browser input failed", e.message));
+    await (this.screen ?? this.browser).input(input).catch((e: Error) => log("warn", "input failed", e.message));
   }
 
   private onTerminal(d: string) {
