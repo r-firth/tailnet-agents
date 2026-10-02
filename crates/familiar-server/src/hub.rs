@@ -770,6 +770,8 @@ impl Hub {
         }
         self.emit_stats();
         self.dispatch();
+        let dir = self.cfg.data_dir.join("recordings");
+        tokio::task::spawn_blocking(move || prune_recordings(&dir));
     }
 
     pub fn cancel_task(self: &Arc<Self>, id: &str, why: &str) -> Option<Task> {
@@ -1750,5 +1752,26 @@ mod tests {
         assert_eq!(title_from("book me the train to edinburgh and pay for it"), "Book the train to edinburgh");
         assert_eq!(title_from("install blender on my machine"), "Install blender on my machine");
         assert_eq!(title_from("please download my hetzner invoices for september, then email them to accounts"), "Download my hetzner invoices for september");
+    }
+}
+
+/// Replay frames are the one thing Familiar writes a lot of. Keep the newest runs' recordings
+/// up to FAMILIAR_RECORDINGS_MB (default 2 GB) and at most 100 runs; older replays fall back to keyframes.
+fn prune_recordings(dir: &std::path::Path) {
+    let cap = std::env::var("FAMILIAR_RECORDINGS_MB").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(2048) * 1024 * 1024;
+    let size_of = |d: &std::path::Path| -> u64 { std::fs::read_dir(d).map(|it| it.flatten().filter_map(|e| e.metadata().ok()).map(|m| m.len()).sum()).unwrap_or(0) };
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut runs: Vec<(std::time::SystemTime, std::path::PathBuf, u64)> = entries
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), e.path(), size_of(&e.path())))
+        .collect();
+    runs.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut total = 0u64;
+    for (i, (_, path, size)) in runs.iter().enumerate() {
+        total += size;
+        if i >= 100 || total > cap {
+            std::fs::remove_dir_all(path).ok();
+        }
     }
 }
